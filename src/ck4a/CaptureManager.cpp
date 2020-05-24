@@ -37,7 +37,7 @@ namespace ck4a {
 
 namespace {
 
-bool sLogNetworkVerbose = true;
+bool sLogNetworkVerbose = false;
 
 } // anon
 

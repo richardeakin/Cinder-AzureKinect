@@ -183,6 +183,40 @@ const char* wiredSyncModeToString( k4a_wired_sync_mode_t mode )
 	return "(unknown)";
 }
 
+//! Creates and returns an RGB32F surface that contains an xy table for mapping depth values from 2d to 3d coordinate space
+Surface32f makeTableDepth2dTo3d( const k4a::calibration &calibration )
+{
+	int width = calibration.depth_camera_calibration.resolution_width;
+	int height = calibration.depth_camera_calibration.resolution_height;
+	Surface32f surface( width, height, false );
+
+	k4a_float2_t p;
+	k4a_float3_t ray;
+	int valid;
+
+	auto iter = surface.getIter();
+	while( iter.line() ) {
+		p.xy.y = (float)iter.y();
+		while( iter.pixel() ) {
+			p.xy.x = (float)iter.x();
+			k4a_calibration_2d_to_3d( &calibration, &p, 1.0f, K4A_CALIBRATION_TYPE_DEPTH, K4A_CALIBRATION_TYPE_DEPTH, &ray, &valid );
+			//CI_LOG_I( "[" << p.xy.x << ", " << p.xy.y << "]: ray: (" << ray.xyz.x << ", " << ray.xyz.y << ", " << ray.xyz.z << ")" );
+			if( valid ) {
+				iter.r() = ray.xyz.x;
+				iter.g() = ray.xyz.y;
+			}
+			else {
+				iter.r() = nanf("");
+				iter.g() = nanf("");
+			}
+
+			iter.b() = 0;
+		}
+	}
+
+	return surface;
+}
+
 } // anon
 
 //! Singleton to manager k4a devices
@@ -315,7 +349,7 @@ CaptureAzureKinect::~CaptureAzureKinect()
 	uninit();
 }
 
-void CaptureAzureKinect::init( const ma::Info& info )
+void CaptureAzureKinect::init( const ma::Info &info )
 {
 	CI_ASSERT( ! isInitialized() );
 
@@ -477,6 +511,7 @@ void CaptureAzureKinect::clearData()
 	mColorTexture = {};
 	mDepthTexture = {};
 	mDepthTexture = {};
+	mTableDepth2d3dTexture = {};
 
 	mBodies.clear();
 	mData->mSkeletons.clear();
@@ -617,11 +652,11 @@ void CaptureAzureKinect::threadEntry()
 
 	if( mBodyTrackingEnabled ) {
 		// TODO: make sure depth is enabled and set to a suitable mode during init()
+		// - right now I assume it is
 		// https://docs.microsoft.com/en-us/azure/kinect-dk/build-first-body-app#open-device-and-start-the-camera
 		try {
 			k4a::calibration calibration = mData->mDevice.get_calibration( mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution );
-			k4abt_tracker_configuration_t trackerConfig = K4ABT_TRACKER_CONFIG_DEFAULT;
-			mData->mTracker = k4abt::tracker::create( calibration, trackerConfig );
+			mData->mTracker = k4abt::tracker::create( calibration, K4ABT_TRACKER_CONFIG_DEFAULT );
 			mCurrentBodyFrame = 0;
 			mTotalBodiesTrackedLastFrame = 0;
 			LOG_CAPTURE_V( "\t- created body tracker in " << timer.getSeconds() << " seconds." );
@@ -673,6 +708,10 @@ void CaptureAzureKinect::process()
 
 	LOG_CAPTURE_PROCESS( "time: " << mTimeLastCapture );
 
+	// TODO: need to decide how to expose copying depth versus color buffers in settings
+	// - right now only copies if ui is ticked
+	// - but also don't want to force copying the color buffer if depth texture is needed
+	// - color index should also be considered here
 	if( mCopyBuffersEnabled ) {
 		lock_guard<recursive_mutex> lock( mMutexData );
 		
@@ -930,6 +969,18 @@ std::vector<Body> CaptureAzureKinect::getBodies() const
 // methods called from main update loop
 // ----------------------------------------------------------------------------------------------------
 
+ci::Surface8u CaptureAzureKinect::getColorSurfaceCloned() const
+{
+	lock_guard<recursive_mutex> lock( mMutexData );
+	return mColorSurface.clone( true );
+}
+
+ci::Channel16u CaptureAzureKinect::getDepthChannelCloned() const
+{
+	lock_guard<recursive_mutex> lock( mMutexData );
+	return mDepthChannel.clone( true );
+}
+
 void CaptureAzureKinect::update()
 {
 	double currentTime = getManager()->getCurrentTime();
@@ -995,9 +1046,21 @@ void CaptureAzureKinect::update()
 				mDepthTexture->update( mDepthChannel );
 			}
 			else {
-				auto format = gl::Texture2d::Format().label( "Capture - depth (" + mId + ")" );
+				auto format = gl::Texture2d::Format().label( "Capture - depth (" + mId + ")" )
+					.internalFormat( GL_R16UI );
 				mDepthTexture = gl::Texture::create( mDepthChannel, format );
 			}
+		}
+
+		// create conversion table. TODO: make this optional, it is only necessary for point cloud stuff
+		if( mDepthEnabled && ! mTableDepth2d3dTexture ) {
+			k4a::calibration calibration = mData->mDevice.get_calibration( mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution );
+			mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
+			auto format = gl::Texture2d::Format().label( "Capture - table depth 2d->3d (" + mId + ")" )
+				.internalFormat( GL_RGB32F )
+				.minFilter( GL_LINEAR ).magFilter( GL_LINEAR );
+			//format.dataType(GL_FLOAT); // TODO: remove if not needed
+			mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
 		}
 	}
 
@@ -1223,6 +1286,7 @@ void CaptureAzureKinect::updateUI()
 		ImGuiTreeNodeFlags viewerFlags = ImGuiTreeNodeFlags_DefaultOpen;
 		imx::Texture2d( "color", mColorTexture, viewerFlags );
 		imx::TextureDepth( "depth", mDepthTexture, viewerFlags );
+		imx::Texture2d( "depth table", mTableDepth2d3dTexture, viewerFlags );
 	}
 
 	im::End();

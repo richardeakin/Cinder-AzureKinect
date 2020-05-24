@@ -56,6 +56,14 @@ public:
 	bool isLogVerboseEnabled() const { return mLogVerbose; }
 	void setLogVerboseEnabled( bool b ) { mLogVerbose = b; }
 
+	ci::Surface8u getColorSurfaceCloned() const;
+	ci::Channel16u getDepthChannelCloned() const;
+	const ci::Surface32f& getTableDepth2d3dSurface() const	{ return mTableDepth2d3dSurface; }
+
+	ci::gl::TextureRef	getColorTexture() const				{ return mColorTexture; }
+	ci::gl::TextureRef	getDepthTexture() const				{ return mDepthTexture; }
+	ci::gl::TextureRef	getTableDepth2d3dTexture() const	{ return mTableDepth2d3dTexture; }
+	
 	const ci::Color& getDebugColor() const	{ return mDebugColor; }
 
 	//! Returns the position of this CaptureDevice relative to the room's origin in centimeters
@@ -104,7 +112,8 @@ private:
 
 	ci::Surface8u			mColorSurface;
 	ci::Channel16u			mDepthChannel;
-	ci::gl::TextureRef		mColorTexture, mDepthTexture;
+	ci::Surface32f			mTableDepth2d3dSurface;
+	ci::gl::TextureRef		mColorTexture, mDepthTexture, mTableDepth2d3dTexture;
 
 	std::map<std::string,Body>	mBodies; //! key: body id
 
@@ -120,7 +129,7 @@ private:
 	ci::Color		mDebugColor = ci::Color::white();
 
 
-	bool	mCopyBuffersEnabled = false;
+	bool	mCopyBuffersEnabled = true; // TODO: this needs to be on a per-buffer basis
 	double	mTimeLastCapture = -1;
 	double 	mTimeLastCaptureFailed = -1.0;
 	bool 	mLogVerbose = true;
