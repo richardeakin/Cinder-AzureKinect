@@ -64,6 +64,8 @@ public:
 	ci::gl::TextureRef	getDepthTexture() const				{ return mDepthTexture; }
 	ci::gl::TextureRef	getTableDepth2d3dTexture() const	{ return mTableDepth2d3dTexture; }
 	
+	void openRecording( const ci::fs::path &filePath );
+
 	const ci::Color& getDebugColor() const	{ return mDebugColor; }
 
 	//! Returns the position of this CaptureDevice relative to the room's origin in centimeters

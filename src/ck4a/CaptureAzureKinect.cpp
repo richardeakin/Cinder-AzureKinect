@@ -34,6 +34,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "cinder/Utilities.h"
 
 #include <k4a/k4a.hpp>
+#include <k4arecord/playback.h>
 #include <k4abt.hpp>
 
 using namespace ci;
@@ -969,6 +970,30 @@ std::vector<Body> CaptureAzureKinect::getBodies() const
 // methods called from main update loop
 // ----------------------------------------------------------------------------------------------------
 
+void CaptureAzureKinect::openRecording( const ci::fs::path &filePath )
+{
+	// TODO NEXT: open a mkv file and play it, instead of camera
+	// GOAL: read a frame and print it to screen
+	
+	if( ! fs::exists( filePath ) ) {
+		CI_LOG_E( "filepath doesn't exist: " << filePath );
+		return;
+	}
+	// https://docs.microsoft.com/en-us/azure/Kinect-dk/record-playback-api
+	k4a_playback_t playback_handle = NULL;
+	if( k4a_playback_open( filePath.string().c_str(), &playback_handle ) ) {
+		CI_LOG_E( "Failed to option k4a playback file at path: " << filePath );
+		return;
+	}
+
+	uint64_t recording_length = k4a_playback_get_last_timestamp_usec( playback_handle );
+	CI_LOG_I( "Recording is " << recording_length / 1000000 << " seconds long." );
+
+
+
+	k4a_playback_close( playback_handle );
+}
+
 ci::Surface8u CaptureAzureKinect::getColorSurfaceCloned() const
 {
 	lock_guard<recursive_mutex> lock( mMutexData );
@@ -1199,6 +1224,13 @@ void CaptureAzureKinect::updateUI()
 	}
 
 	im::Separator();
+
+	if( im::CollapsingHeader( "Recording / Playback", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		if( im::Button( "open" ) ) {
+			// TODO: add basic file api
+			openRecording( "E:\\Dropbox\\work\\framestore\\sentinal\\kinect_recordings\\output.mkv" );
+		}
+	}
 
 	if( mBodyTrackingEnabled && im::CollapsingHeader( ( "Body Tracking (bodies: " + to_string( mTotalBodiesTrackedLastFrame ) + ")###Bodies" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		if( mData->mTracker ) {
