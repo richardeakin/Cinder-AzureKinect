@@ -989,7 +989,38 @@ void CaptureAzureKinect::openRecording( const ci::fs::path &filePath )
 	uint64_t recording_length = k4a_playback_get_last_timestamp_usec( playback_handle );
 	CI_LOG_I( "Recording is " << recording_length / 1000000 << " seconds long." );
 
+	// Print the serial number of the device used to record
+	char serial_number[256];
+	size_t serial_number_size = 256;
+	k4a_buffer_result_t buffer_result = k4a_playback_get_tag( playback_handle, "K4A_DEVICE_SERIAL_NUMBER", serial_number, &serial_number_size );
+	if( buffer_result == K4A_BUFFER_RESULT_SUCCEEDED ) {
+		CI_LOG_I( "Device serial number: " << serial_number );
+	}
+	else if( buffer_result == K4A_BUFFER_RESULT_TOO_SMALL ) {
+		printf( "Device serial number too long.\n" );
+	}
+	else {
+		printf( "Tag does not exist. Device serial number was not recorded.\n" );
+	}
 
+	k4a_capture_t capture = NULL;
+	k4a_stream_result_t result = K4A_STREAM_RESULT_SUCCEEDED;
+	while( result == K4A_STREAM_RESULT_SUCCEEDED ) {
+		result = k4a_playback_get_next_capture( playback_handle, &capture );
+		if( result == K4A_STREAM_RESULT_SUCCEEDED ) {
+			// Process capture here
+			k4a_capture_release( capture );
+		}
+		else if( result == K4A_STREAM_RESULT_EOF ) {
+			// End of file reached
+			CI_LOG_I( "EOF" );
+			break;
+		}
+	}
+	if( result == K4A_STREAM_RESULT_FAILED ) {
+		CI_LOG_E( "Failed to read entire recording" );
+		//return;
+	}
 
 	k4a_playback_close( playback_handle );
 }
