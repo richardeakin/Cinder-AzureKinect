@@ -33,9 +33,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "cinder/Timer.h"
 #include "cinder/Utilities.h"
 
-#include <k4a/k4a.hpp>
+#include <k4a/k4a.h>
+#include <k4abt.h>
 #include <k4arecord/playback.h>
-#include <k4abt.hpp>
 
 using namespace ci;
 using namespace std;
@@ -175,9 +175,9 @@ const char* cameraFpsToString( k4a_fps_t fps )
 const char* wiredSyncModeToString( k4a_wired_sync_mode_t mode )
 {
 	switch( mode ) {
-		case K4A_WIRED_SYNC_MODE_STANDALONE:		return "K4A_WIRED_SYNC_MODE_STANDALONE";
+		case K4A_WIRED_SYNC_MODE_STANDALONE:	return "K4A_WIRED_SYNC_MODE_STANDALONE";
 		case K4A_WIRED_SYNC_MODE_MASTER:		return "K4A_WIRED_SYNC_MODE_MASTER";
-		case K4A_WIRED_SYNC_MODE_SUBORDINATE:		return "K4A_WIRED_SYNC_MODE_SUBORDINATE";
+		case K4A_WIRED_SYNC_MODE_SUBORDINATE:	return "K4A_WIRED_SYNC_MODE_SUBORDINATE";
 		default: CI_ASSERT_NOT_REACHABLE();
 	}
 
@@ -185,7 +185,7 @@ const char* wiredSyncModeToString( k4a_wired_sync_mode_t mode )
 }
 
 //! Creates and returns an RGB32F surface that contains an xy table for mapping depth values from 2d to 3d coordinate space
-Surface32f makeTableDepth2dTo3d( const k4a::calibration &calibration )
+Surface32f makeTableDepth2dTo3d( const k4a_calibration_t &calibration )
 {
 	int width = calibration.depth_camera_calibration.resolution_width;
 	int height = calibration.depth_camera_calibration.resolution_height;
@@ -320,9 +320,9 @@ void AzureKinectManager::onLogMessage( void *context, k4a_log_level_t level, con
 }
 
 struct CaptureAzureKinect::Data {
-	k4a::device		mDevice;
-	k4abt::tracker	mTracker;
-	k4a_device_configuration_t mDeviceConfig; // stored mostly for debugging reasons
+	k4a_device_t				mDevice;
+	k4abt_tracker_t				mTracker;
+	k4a_device_configuration_t	mDeviceConfig; // stored mostly for debugging reasons
 
 	std::map<string, k4abt_skeleton_t> mSkeletons; //! stored each process so that parsing tweaks can continue while paused
 };
@@ -330,7 +330,7 @@ struct CaptureAzureKinect::Data {
 // static
 int	CaptureAzureKinect::getNumDevicesInstalled()
 {
-	return (int)k4a::device::get_installed_count();
+	return (int)k4a_device_get_installed_count();
 }
 
 // static
@@ -398,7 +398,7 @@ void CaptureAzureKinect::init( const ma::Info &info )
 	}
 
 	if( mEnabled && mDeviceIndex >= getNumDevicesInstalled() ) {
-		CI_LOG_E( "device index (" << mDeviceIndex << ") out of range (" << k4a::device::get_installed_count() << ")" );
+		CI_LOG_E( "device index (" << mDeviceIndex << ") out of range (" << k4a_device_get_installed_count() << ")" );
 
 		setStatus( Status::Failed );
 		// TODO: rename this to timeLastInit? and wait on that for autoStart?
@@ -409,9 +409,9 @@ void CaptureAzureKinect::init( const ma::Info &info )
 
 	if( mEnabled ) {
 		try {
-			mData->mDevice = k4a::device::open( mDeviceIndex );
+			k4a_device_open( mDeviceIndex, &mData->mDevice );
 			if( mSerialNumber.empty() ) {
-				mSerialNumber = mData->mDevice.get_serialnum();
+				mSerialNumber = getSerialNumberAsString( mData->mDevice );
 			}
 			LOG_CAPTURE_V( "opened device at index: " << mDeviceIndex << ", serial number: " << mSerialNumber );
 		}
@@ -426,7 +426,7 @@ void CaptureAzureKinect::init( const ma::Info &info )
 		// TODO: add sanity check in CaptureManager that there aren't two 'masters'
 		// - will do this where I find and store the master
 		bool syncInConnected, syncOutConnected;
-		k4a_result_t result = k4a_device_get_sync_jack( mData->mDevice.handle(), &syncInConnected, &syncOutConnected );
+		k4a_result_t result = k4a_device_get_sync_jack( mData->mDevice, &syncInConnected, &syncOutConnected );
 		CI_VERIFY( result == K4A_RESULT_SUCCEEDED );
 		mSyncMaster = syncOutConnected && ! syncInConnected;
 
@@ -437,9 +437,11 @@ void CaptureAzureKinect::init( const ma::Info &info )
 
 			try {
 				// If you want to synchronize cameras, you need to manually set both their exposures
-				mData->mDevice.set_color_control( K4A_COLOR_CONTROL_EXPOSURE_TIME_ABSOLUTE, K4A_COLOR_CONTROL_MODE_MANUAL, colorExposureUsec );
+				auto result = k4a_device_set_color_control( mData->mDevice, K4A_COLOR_CONTROL_EXPOSURE_TIME_ABSOLUTE, K4A_COLOR_CONTROL_MODE_MANUAL, colorExposureUsec );
+				CI_VERIFY( result == K4A_RESULT_SUCCEEDED );
 				// This setting compensates for the flicker of lights due to the frequency of AC power in your region. If you are in an area with 50 Hz power, this may need to be updated
-				mData->mDevice.set_color_control( K4A_COLOR_CONTROL_POWERLINE_FREQUENCY, K4A_COLOR_CONTROL_MODE_MANUAL, powerlineFreq );
+				result = k4a_device_set_color_control( mData->mDevice, K4A_COLOR_CONTROL_POWERLINE_FREQUENCY, K4A_COLOR_CONTROL_MODE_MANUAL, powerlineFreq );
+				CI_VERIFY( result == K4A_RESULT_SUCCEEDED );
 			}
 			catch( exception &exc ) {
 				CI_LOG_E( "Failed to set color control for device with index: " << mDeviceIndex );
@@ -480,12 +482,12 @@ void CaptureAzureKinect::uninit()
 	stop();
 
 	if( mData->mTracker ) {
-		mData->mTracker.destroy();
+		k4abt_tracker_destroy( mData->mTracker );
 		mData->mTracker = {};
 		mCurrentBodyFrame = -1;
 	}
 	if( mData->mDevice ) {
-		mData->mDevice.close();
+		k4a_device_close( mData->mDevice );
 		mData->mDevice = {};
 	}
 
@@ -566,11 +568,11 @@ void CaptureAzureKinect::stop()
 
 	// mDevice and mTracker are created async once started, so delete them here
 	if( mData->mTracker ) {
-		mData->mTracker.shutdown();
+		k4abt_tracker_shutdown( mData->mTracker );
 		mData->mTracker = {};
 	}
 	if( mData->mDevice ) {
-		mData->mDevice.stop_cameras();
+		k4a_device_stop_cameras( mData->mDevice );
 	}
 
 	clearData();
@@ -638,15 +640,13 @@ void CaptureAzureKinect::threadEntry()
 
 	mData->mDeviceConfig = deviceConfig;
 
-	try {
-		mData->mDevice.start_cameras( &deviceConfig );		
-		LOG_CAPTURE_V( "Camera started for device: " << mId << " in << " << timer.getSeconds() << " seconds." );
-	}
-	catch( exception & exc ) {
-		CI_LOG_EXCEPTION( "failed to start Camera with id: " << mId, exc );
-		mTimeNeedsReinit = getManager()->getCurrentTime();
+	if( k4a_device_start_cameras( mData->mDevice, &deviceConfig ) != K4A_RESULT_SUCCEEDED ) {
+		CI_LOG_E( "failed to start cameras for device with id: " << mId );
+		mTimeNeedsReinit = getManager()->getCurrentTime(); // TODO: use chrono::high_resolution_clock() instead
 		return;
 	}
+
+	LOG_CAPTURE_V( "Camera started for device: " << mId << " in << " << timer.getSeconds() << " seconds." );
 
 	timer.stop();
 	timer.start();
@@ -655,15 +655,19 @@ void CaptureAzureKinect::threadEntry()
 		// TODO: make sure depth is enabled and set to a suitable mode during init()
 		// - right now I assume it is
 		// https://docs.microsoft.com/en-us/azure/kinect-dk/build-first-body-app#open-device-and-start-the-camera
-		try {
-			k4a::calibration calibration = mData->mDevice.get_calibration( mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution );
-			mData->mTracker = k4abt::tracker::create( calibration, K4ABT_TRACKER_CONFIG_DEFAULT );
-			mCurrentBodyFrame = 0;
-			mTotalBodiesTrackedLastFrame = 0;
-			LOG_CAPTURE_V( "\t- created body tracker in " << timer.getSeconds() << " seconds." );
+		mCurrentBodyFrame = 0;
+		mTotalBodiesTrackedLastFrame = 0;
+		k4a_calibration_t calibration;
+		if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) != K4A_RESULT_SUCCEEDED ) {
+			CI_LOG_E( "failed to read device calibration for device with id: " << mId );
+			mTimeNeedsReinit = getManager()->getCurrentTime();
+			return;
 		}
-		catch( exception & exc ) {
-			CI_LOG_EXCEPTION( "failed to create body tracker for Camera with id: " << mId, exc );
+
+		if( k4abt_tracker_create( &calibration, K4ABT_TRACKER_CONFIG_DEFAULT, &mData->mTracker ) != K4A_RESULT_SUCCEEDED ) {
+			CI_LOG_E( "failed to create body tracker for device with id: " << mId );
+			mTimeNeedsReinit = getManager()->getCurrentTime();
+			return;
 		}
 	}
 
@@ -693,15 +697,12 @@ void CaptureAzureKinect::process()
 	CI_ASSERT( mEnabled );
 	CI_ASSERT( isRunning() );
 
-	// TODO: make this a deviceConfig param
-	// - use heartbeat?
-	const auto waitTimeout = chrono::milliseconds( 2000 );
-
-	k4a::capture capture;
-	if( ! mData->mDevice.get_capture( &capture, waitTimeout ) ) {
+	int32_t waitTimeout = 2000;
+	k4a_capture_t capture;
+	if( k4a_device_get_capture( mData->mDevice, &capture, waitTimeout ) != K4A_RESULT_SUCCEEDED ) {
 		mTimeLastCaptureFailed = getManager()->getCurrentTime();
 		mTimeNeedsReinit = mTimeLastCapture;
-		CI_LOG_E( "get_capture() failed" );
+		CI_LOG_E( "k4a_device_get_capture failed for device with id: " << mId );
 		return;
 	}
 
@@ -721,66 +722,61 @@ void CaptureAzureKinect::process()
 
 		// store color image as a Surface8u
 		{
-			auto image = capture.get_color_image();
+
+			k4a_image_t image = k4a_capture_get_color_image( capture );
 			if( image ) {
-				uint8_t *data = image.get_buffer();
-				auto format = image.get_format();
+				uint8_t *data = k4a_image_get_buffer( image );
+				k4a_image_format_t format = k4a_image_get_format( image );
 				if( format == K4A_IMAGE_FORMAT_COLOR_MJPG ) {
-					size_t dataSize = image.get_size();
+					size_t dataSize = k4a_image_get_size( image );
 					auto dataSource = DataSourceBuffer::create( make_shared<Buffer>( data, dataSize ), ".jpeg" );
 					mColorSurface = Surface8u( loadImage( dataSource, ImageSource::Options(), ".jpeg" ) );
 				}
 				else {
-					int width = image.get_width_pixels();
-					int height = image.get_height_pixels();
-					int stride = image.get_stride_bytes();
+					int width = k4a_image_get_width_pixels( image );
+					int height = k4a_image_get_height_pixels( image );
+					int stride = k4a_image_get_stride_bytes( image );
 
 					Surface8u surface( data, width, height, stride, SurfaceChannelOrder::BGRA );
 					mColorSurface = surface.clone( true );
+
+					k4a_image_release( image );
 				}
 			}
 		}
 
 		// store depth image as a Channel16u
 		{
-			auto image = capture.get_depth_image();
+			k4a_image_t image = k4a_capture_get_depth_image( capture );
 			if( image ) {
-				uint16_t *data = (uint16_t *)image.get_buffer();
-				int width = image.get_width_pixels();
-				int height = image.get_height_pixels();
-				int stride = image.get_stride_bytes();
+				uint16_t *data = (uint16_t *)k4a_image_get_buffer( image );
+				int width = k4a_image_get_width_pixels( image );
+				int height = k4a_image_get_height_pixels( image );
+				int stride = k4a_image_get_stride_bytes( image );
 
 				Channel16u channel( width, height, stride, 1, data );
 				mDepthChannel = channel.clone( true );
+
+				k4a_image_release( image );
 			}
 		}
-
 	}
 
 	if( mBodyTrackingEnabled && mData->mTracker ) {
 		//CI_PROFILE( "Body Tracking (" + mId + ")" );
 
 		// process body tracking
-		bool success = false;
-		try {
-			success = mData->mTracker.enqueue_capture( capture, waitTimeout );
-		}
-		catch( exception &exc ) {
-			CI_LOG_EXCEPTION( "mTracker.enqueue_capture failed", exc );
-			mTimeLastCaptureFailed = getManager()->getCurrentTime();
-		}
-
-		if( success ) {
+		if( k4abt_tracker_enqueue_capture( mData->mTracker, capture, waitTimeout ) == K4A_RESULT_SUCCEEDED ) {
 			// successful enqueue - now see if we have a frame ready
-			k4abt::frame frame;
-			if( mData->mTracker.pop_result( &frame, waitTimeout ) ) {
+			k4abt_frame_t bodyFrame;
+			if( k4abt_tracker_pop_result( mData->mTracker, &bodyFrame, waitTimeout ) == K4A_RESULT_SUCCEEDED ) {
 				// fill mSkeletons with new data from this frame
-				uint32_t numBodies = frame.get_num_bodies();
+				uint32_t numBodies = k4abt_frame_get_num_bodies( bodyFrame );
 				mData->mSkeletons.clear();
 				for( uint32_t bodyIndex = 0; bodyIndex < numBodies; bodyIndex++ ) {
-					auto bodyId = frame.get_body_id( bodyIndex );
+					uint32_t bodyId = k4abt_frame_get_body_id( bodyFrame, bodyIndex );
 					k4abt_skeleton_t skeleton;
-					frame.get_body_skeleton( bodyIndex, skeleton );
+					k4abt_frame_get_body_skeleton( bodyFrame, bodyIndex, &skeleton );
 					mData->mSkeletons.insert( { to_string( bodyId ), skeleton } );
 				}
 
@@ -798,7 +794,7 @@ void CaptureAzureKinect::process()
 
 				double currentTime = getManager()->getCurrentTime();
 				for( uint32_t bodyIndex = 0; bodyIndex < numBodies; bodyIndex++ ) {
-					string bodyId = to_string( frame.get_body_id( bodyIndex ) );
+					string bodyId = to_string( k4abt_frame_get_body_id( bodyFrame, bodyIndex ) );
 
 					// see if we already got a body with this id, if not add a new one
 					Body* body = nullptr;
@@ -836,9 +832,15 @@ void CaptureAzureKinect::process()
 
 				mCurrentBodyFrame += 1; // keep track of how many body frames we've processed
 			}
-
+			k4abt_frame_release( bodyFrame );
+		}
+		else {
+			CI_LOG_E( "k4abt_tracker_enqueue_capture failed for device with id: " << mId );
+			mTimeLastCaptureFailed = getManager()->getCurrentTime();
 		}
 	}
+
+	k4a_capture_release( capture );
 }
 
 // Returns false if the body should be rejected.
@@ -1110,13 +1112,18 @@ void CaptureAzureKinect::update()
 
 		// create conversion table. TODO: make this optional, it is only necessary for point cloud stuff
 		if( mDepthEnabled && ! mTableDepth2d3dTexture ) {
-			k4a::calibration calibration = mData->mDevice.get_calibration( mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution );
-			mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
-			auto format = gl::Texture2d::Format().label( "Capture - table depth 2d->3d (" + mId + ")" )
-				.internalFormat( GL_RGB32F )
-				.minFilter( GL_LINEAR ).magFilter( GL_LINEAR );
-			//format.dataType(GL_FLOAT); // TODO: remove if not needed
-			mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
+			k4a_calibration_t calibration;
+			if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) == K4A_RESULT_SUCCEEDED ) {
+				mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
+				auto format = gl::Texture2d::Format().label( "Capture - table depth 2d->3d (" + mId + ")" )
+					.internalFormat( GL_RGB32F )
+					.minFilter( GL_LINEAR ).magFilter( GL_LINEAR );
+				//format.dataType(GL_FLOAT); // TODO: remove if not needed
+				mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
+			}
+			else {
+				CI_LOG_E( "failed to read device calibration for device with id: " << mId );
+			}
 		}
 	}
 
@@ -1149,7 +1156,7 @@ void CaptureAzureKinect::updateUI()
 
 			// TODO: show entire k4a_device_configuration_t here
 			bool syncInConnected, syncOutConnected;
-			k4a_result_t result = k4a_device_get_sync_jack( mData->mDevice.handle(), &syncInConnected, &syncOutConnected );
+			k4a_result_t result = k4a_device_get_sync_jack( mData->mDevice, &syncInConnected, &syncOutConnected );
 			im::Text( "sync in: %d, sync out: %d, master: %d", syncInConnected, syncOutConnected, mSyncMaster );
 
 			if( ImGui::TreeNode( "Device configuration" ) ) {
@@ -1168,7 +1175,7 @@ void CaptureAzureKinect::updateUI()
 
 			if( ImGui::TreeNode( "Device Firmware Version Info" ) ) {
 				k4a_hardware_version_t versionInfo;
-				result = k4a_device_get_version( mData->mDevice.handle(), &versionInfo );
+				result = k4a_device_get_version( mData->mDevice, &versionInfo );
 				if( result == K4A_RESULT_SUCCEEDED ) {
 					ImGui::Text( "RGB camera: %u.%u.%u", versionInfo.rgb.major, versionInfo.rgb.minor, versionInfo.rgb.iteration );
 					ImGui::Text( "Depth camera: %u.%u.%u",
@@ -1266,10 +1273,10 @@ void CaptureAzureKinect::updateUI()
 	if( mBodyTrackingEnabled && im::CollapsingHeader( ( "Body Tracking (bodies: " + to_string( mTotalBodiesTrackedLastFrame ) + ")###Bodies" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		if( mData->mTracker ) {
 			// TODO: make temporal smoothing a deviceConfig param on CaptureManager itself
-			// - perhaps devices can override but CaptureManager will have this param that it can set on all devices
+			// - devices can override here but CaptureManager will have this param that it can set on all devices
 			static float mTrackerTemporalSmoothingFactor = 0.6f;
 			if( im::SliderFloat( "temporal smoothing", &mTrackerTemporalSmoothingFactor, 0, 1 ) ) {
-				mData->mTracker.set_temporal_smoothing( mTrackerTemporalSmoothingFactor );
+				k4abt_tracker_set_temporal_smoothing( mData->mTracker, mTrackerTemporalSmoothingFactor );
 			}
 		}
 		else {
