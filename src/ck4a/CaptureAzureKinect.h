@@ -111,6 +111,7 @@ private:
 	int				mDeviceIndex = -1;
 	std::string		mSerialNumber;
 	std::string     mHostId; // TODO: consider keeping this on a separate CaptureNetwork subclass of CaptureDevice
+	ci::fs::path	mRecordingFilePath;
 
 	ci::Surface8u			mColorSurface;
 	ci::Channel16u			mDepthChannel;
