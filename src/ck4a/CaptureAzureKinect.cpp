@@ -221,22 +221,21 @@ Surface32f makeTableDepth2dTo3d( const k4a_calibration_t &calibration )
 // see sdk k4aviewer's K4ARecordingDockControl::GetCaptureTimestamp() for explanation or get image order
 uint64_t getCaptureTimestampUsec( const k4a_capture_t &capture )
 {
-	const auto &irImage = k4a_capture_get_ir_image( capture );
-	if( irImage ) {
-		return k4a_image_get_device_timestamp_usec( irImage );
+	k4a_image_t image = k4a_capture_get_ir_image( capture );
+	if( ! image ) {
+		image = k4a_capture_get_depth_image( capture );
 	}
-
-	const auto depthImage = k4a_capture_get_depth_image( capture );
-	if( depthImage ) {
-		return k4a_image_get_device_timestamp_usec( depthImage );
+	if( ! image ) {
+		image = k4a_capture_get_color_image( capture );
 	}
-
-	const auto colorImage = k4a_capture_get_color_image( capture );
-	if( colorImage ) {
-		return k4a_image_get_device_timestamp_usec( colorImage );
+	if( ! image ) {
+		return 0;
 	}
-
-	return 0;
+	else {
+		uint64_t result = k4a_image_get_device_timestamp_usec( image );
+		k4a_image_release( image );
+		return result;
+	}
 }
 
 } // anon
@@ -773,7 +772,6 @@ void CaptureAzureKinect::process()
 				auto result = k4a_playback_get_next_capture( mData->mPlayback, &capture );
 				if( result == K4A_STREAM_RESULT_EOF ) {
 					// End of file reached. Not closing until user hits close button.
-					CI_LOG_I( "EOF" );
 					if( mLoopEnabled ) {
 						mSeekTimestep = 0;
 					}
@@ -782,7 +780,7 @@ void CaptureAzureKinect::process()
 					}
 					return;
 				}
-				if( result == K4A_STREAM_RESULT_FAILED ) {
+				else if( result == K4A_STREAM_RESULT_FAILED ) {
 					CI_LOG_E( "Failed to read playback" );
 					mPlaybackStatus = PlaybackStatus::Failed;
 					return;
@@ -842,8 +840,8 @@ void CaptureAzureKinect::process()
 					Surface8u surface( data, width, height, stride, SurfaceChannelOrder::BGRA );
 					mColorSurface = surface.clone( true );
 
-					k4a_image_release( image );
 				}
+				k4a_image_release( image );
 			}
 		}
 
