@@ -333,11 +333,10 @@ int AzureKinectManager::getDeviceIndex( const std::string &serialNumber ) const
 void AzureKinectManager::onLogMessage( void *context, k4a_log_level_t level, const char *file, const int line, const char *message )
 {
 	auto cinderLevel = k4aLogLevelToCinder( level );
+	ci::log::Entry( cinderLevel, ci::log::Location( CINDER_CURRENT_FUNCTION, file, line ) ) << message;
 	if( (int)cinderLevel == (int)ci::log::LEVEL_ERROR ) {
 		int blarg = 2;
 	}
-
-	ci::log::Entry( cinderLevel, ci::log::Location( CINDER_CURRENT_FUNCTION, file, line ) ) << message;
 }
 
 struct CaptureAzureKinect::Data {
@@ -730,11 +729,19 @@ void CaptureAzureKinect::threadEntry()
 			break;
 
 		if( ! mPaused ) {
-			Timer timer( true );
+			chrono::high_resolution_clock::time_point startTime = chrono::high_resolution_clock::now();
+
 			process();
-			mLastProcessDuration = timer.getSeconds();
-			if( mData->mPlayback ) {
-				this_thread::sleep_for( std::chrono::duration<int, std::ratio<1, 30>>( 1 ) ); // TODO: use current capture config settings to determine this time
+
+			chrono::high_resolution_clock::time_point endTime = chrono::high_resolution_clock::now();
+			chrono::high_resolution_clock::duration processingTime = endTime - startTime;
+			auto processingTimeUs = chrono::duration_cast<chrono::microseconds>(processingTime);
+			mLastProcessDuration = processingTimeUs.count() / 1e-6;
+			// TODO: use current capture config settings to determine this time (see K4ARecordingDockControl constructor)
+			std::chrono::microseconds sleepTime = std::chrono::microseconds( std::micro::den / ( std::micro::num * 30 ) ) - processingTimeUs;
+			//CI_LOG_I( "sleep ms: " << sleepTime.count() * 0.001 << ", processingTimeeUs: " << processingTimeUs.count() * 0.001 );
+			if( mData->mPlayback && sleepTime > chrono::microseconds( 0 ) ) {
+				this_thread::sleep_for( sleepTime );
 			}
 		}
 		else {
@@ -767,7 +774,12 @@ void CaptureAzureKinect::process()
 				if( result == K4A_STREAM_RESULT_EOF ) {
 					// End of file reached. Not closing until user hits close button.
 					CI_LOG_I( "EOF" );
-					mPlaybackStatus = PlaybackStatus::EndOfFile;
+					if( mLoopEnabled ) {
+						mSeekTimestep = 0;
+					}
+					else {
+						mPlaybackStatus = PlaybackStatus::EndOfFile;
+					}
 					return;
 				}
 				if( result == K4A_STREAM_RESULT_FAILED ) {
@@ -812,8 +824,7 @@ void CaptureAzureKinect::process()
 		//CI_PROFILE_CPU( "Capture Buffers (" + mId + ")" );
 
 		// store color image as a Surface8u
-		{
-
+		if( mColorEnabled ) {
 			k4a_image_t image = k4a_capture_get_color_image( capture );
 			if( image ) {
 				uint8_t *data = k4a_image_get_buffer( image );
@@ -837,7 +848,7 @@ void CaptureAzureKinect::process()
 		}
 
 		// store depth image as a Channel16u
-		{
+		if( mDepthEnabled ) {
 			k4a_image_t image = k4a_capture_get_depth_image( capture );
 			if( image ) {
 				uint16_t *data = (uint16_t *)k4a_image_get_buffer( image );
@@ -1047,7 +1058,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 // Thread-safe  data access
 // ----------------------------------------------------------------------------------------------------
 
-std::vector<Body> CaptureAzureKinect::getBodies() const
+vector<Body> CaptureAzureKinect::getBodies() const
 {
 	lock_guard<recursive_mutex> lock_guard( mMutexData );
 
@@ -1070,8 +1081,6 @@ void CaptureAzureKinect::openRecording( const ci::fs::path &filePath )
 		return;
 	}
 	mRecordingFilePath = filePath;
-
-	unique_lock<recursive_mutex> lock( mMutexProcess );
 
 	if( mData->mPlayback ) {
 		CI_LOG_I( "closing current playback handle" );
@@ -1376,6 +1385,11 @@ void CaptureAzureKinect::updateUI()
 			// TODO: add "<<", "<", "play / pause", ">", ">>" controls
 			if( im::Button( "seek to zero" ) ) {
 				mSeekTimestep = 0;
+			}
+			im::SameLine();
+			bool loop = mLoopEnabled;
+			if( im::Checkbox( "loop", &loop ) ) {
+				mLoopEnabled = loop;
 			}
 
 			if( ImGui::TreeNode( "record configuration" ) ) {

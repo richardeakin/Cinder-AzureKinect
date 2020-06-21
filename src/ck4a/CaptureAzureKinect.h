@@ -152,6 +152,7 @@ private:
 
 	std::atomic<double>				mPlaybackLastCaptureTimestamp = { 0 };
 	std::atomic<int64_t>			mSeekTimestep = { -1 };
+	std::atomic<bool>				mLoopEnabled = { false };
 	PlaybackStatus					mPlaybackStatus = PlaybackStatus::NotLoaded;
 };
 
