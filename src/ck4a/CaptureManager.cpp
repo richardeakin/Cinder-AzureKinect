@@ -653,7 +653,7 @@ void CaptureManager::updateUI()
 		}
 	}
 
-	im::Separator();
+ 	im::Separator();
 
 	for( const auto &device : mCaptureDevices ) {
 		device->enabledUI();

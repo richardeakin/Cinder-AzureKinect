@@ -233,4 +233,17 @@ vec3 getDebugBodyColor( const std::string &bodyId )
 	return sBodyColors[h % sBodyColors.size()];
 }
 
+const char* playbackStatusToString( PlaybackStatus status )
+{
+	switch( status ) {
+		case PlaybackStatus::NotLoaded:	return "NotLoaded";
+		case PlaybackStatus::Ready:		return "Ready";
+		case PlaybackStatus::EndOfFile:	return "EndOfFile";
+		case PlaybackStatus::Failed:	return "Failed";
+		default: break;
+	}
+
+	return "(unknown)";
+}
+
 } // namespace ck4a

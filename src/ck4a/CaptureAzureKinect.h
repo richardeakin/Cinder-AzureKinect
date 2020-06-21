@@ -64,6 +64,8 @@ public:
 	ci::gl::TextureRef	getDepthTexture() const				{ return mDepthTexture; }
 	ci::gl::TextureRef	getTableDepth2d3dTexture() const	{ return mTableDepth2d3dTexture; }
 	
+	void openRecording( const ci::fs::path &filePath );
+
 	const ci::Color& getDebugColor() const	{ return mDebugColor; }
 
 	//! Returns the position of this CaptureDevice relative to the room's origin in centimeters
@@ -109,6 +111,7 @@ private:
 	int				mDeviceIndex = -1;
 	std::string		mSerialNumber;
 	std::string     mHostId; // TODO: consider keeping this on a separate CaptureNetwork subclass of CaptureDevice
+	ci::fs::path	mRecordingFilePath;
 
 	ci::Surface8u			mColorSurface;
 	ci::Channel16u			mDepthChannel;
@@ -146,6 +149,11 @@ private:
 	std::atomic<double>				mLastProcessDuration = { 0 };
 	std::array<float, 180>			mProcessDurationsBuffer;
 	size_t							mProcessDurationsBufferIndex = 0;		
+
+	std::atomic<double>				mPlaybackLastCaptureTimestamp = { 0 };
+	std::atomic<int64_t>			mSeekTimestep = { -1 };
+	std::atomic<bool>				mLoopEnabled = { true };
+	PlaybackStatus					mPlaybackStatus = PlaybackStatus::NotLoaded;
 };
 
 } // namespace ck4a
