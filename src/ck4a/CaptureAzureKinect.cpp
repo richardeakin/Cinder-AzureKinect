@@ -28,6 +28,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "mason/extra/ImGuiStuff.h"
 #include "mason/extra/ImGuiTexture.h"
+#include "imguix/ImGuiFilePicker.h"
 #include "cinder/Breakpoint.h"
 #include "cinder/Log.h"
 #include "cinder/Timer.h"
@@ -509,6 +510,9 @@ void CaptureAzureKinect::save( ma::Info &info ) const
 
 	if( ! mHostId.empty() ) {
 		info["hostId"] = mHostId;
+	}
+	if( ! mRecordingFilePath.empty() ) {
+		info["recordingFile"] = mRecordingFilePath;
 	}
 }
 
@@ -1363,9 +1367,16 @@ void CaptureAzureKinect::updateUI()
 	im::Separator();
 
 	if( im::CollapsingHeader( "Recording / Playback", ImGuiTreeNodeFlags_DefaultOpen ) ) {
-		if( im::Button( "open" ) ) {
-			// TODO: should set the recording path then re-init instead
-			openRecording( mRecordingFilePath );
+		if( im::Button( "open file" ) ) {
+			im::OpenPopup("playback_file_popup" );
+		}
+		if( im::BeginPopup( "playback_file_popup" ) ) {
+			static imx::FilePicker sFilePicker; // TODO: add static map<id,FilePicker> to ImGuiFilePicker.cpp and use that instead
+			if( sFilePicker.show() ) {
+				mRecordingFilePath = sFilePicker.getPath();
+				reinit();
+			}
+			ImGui::EndPopup();
 		}
 		if( mData->mPlayback ) {
 			im::SameLine();
