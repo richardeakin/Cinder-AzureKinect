@@ -11,7 +11,7 @@ namespace imx {
 
 class FilePicker {
 public:
-    FilePicker();
+    FilePicker( const cinder::fs::path &initialPath = {} );
     bool show();
     cinder::fs::path getPath() const    { return mSelectedPath; }
 

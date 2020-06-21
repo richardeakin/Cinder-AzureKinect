@@ -496,7 +496,6 @@ void CaptureAzureKinect::init( const ma::Info &info )
 
 void CaptureAzureKinect::save( ma::Info &info ) const
 {
-	info["serial"] = mSerialNumber;
 	info["deviceIndex"] = mDeviceIndex;
 	info["id"] = mId;
 	info["enabled"] = mEnabled;
@@ -508,6 +507,9 @@ void CaptureAzureKinect::save( ma::Info &info ) const
 	info["pos"] = mPos;
 	info["orientation"] = mOrientation;
 
+	if( ! mSerialNumber.empty() ) {
+		info["serial"] = mSerialNumber;
+	}
 	if( ! mHostId.empty() ) {
 		info["hostId"] = mHostId;
 	}
@@ -532,6 +534,7 @@ void CaptureAzureKinect::uninit()
 	if( mData->mPlayback ) {
 		k4a_playback_close( mData->mPlayback );
 		mData->mPlayback = nullptr;
+		mPlaybackStatus = PlaybackStatus::NotLoaded;
 	}
 
 	clearData();
@@ -1209,16 +1212,18 @@ void CaptureAzureKinect::update()
 				.minFilter( GL_LINEAR ).magFilter( GL_LINEAR );
 
 			k4a_calibration_t calibration;
-			if( mData->mPlayback && mPlaybackStatus == PlaybackStatus::Ready ) {
-				if( k4a_playback_get_calibration( mData->mPlayback, &calibration ) == K4A_RESULT_SUCCEEDED ) {
-					mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
-					mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
-				}
-				else {
-					CI_LOG_E( "failed to read playback calibration for device with id: " << mId );
+			if( mData->mPlayback ) {
+				if( mPlaybackStatus == PlaybackStatus::Ready ) {
+					if( k4a_playback_get_calibration( mData->mPlayback, &calibration ) == K4A_RESULT_SUCCEEDED ) {
+						mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
+						mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
+					}
+					else {
+						CI_LOG_E( "failed to read playback calibration for device with id: " << mId );
+					}
 				}
 			}
-			else {
+			else if( mData->mDevice ) {
 				if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) == K4A_RESULT_SUCCEEDED ) {
 					mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
 					mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
@@ -1371,7 +1376,7 @@ void CaptureAzureKinect::updateUI()
 			im::OpenPopup("playback_file_popup" );
 		}
 		if( im::BeginPopup( "playback_file_popup" ) ) {
-			static imx::FilePicker sFilePicker; // TODO: add static map<id,FilePicker> to ImGuiFilePicker.cpp and use that instead
+			static imx::FilePicker sFilePicker( ! mRecordingFilePath.empty() ? mRecordingFilePath.parent_path() : fs::path() ); // TODO: add static map<id,FilePicker> to ImGuiFilePicker.cpp and use that instead
 			if( sFilePicker.show() ) {
 				mRecordingFilePath = sFilePicker.getPath();
 				reinit();

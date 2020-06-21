@@ -10,9 +10,14 @@ using namespace std;
 
 namespace imx {
 
-FilePicker::FilePicker()
+FilePicker::FilePicker( const cinder::fs::path &initialPath )
 {
-	changeWorkingDirectory( fs::current_path() );
+	if( initialPath.empty() ) {
+		changeWorkingDirectory( fs::current_path() );
+	}
+	else {
+		changeWorkingDirectory( initialPath );
+	}
 }
 
 bool FilePicker::show()
@@ -49,7 +54,7 @@ bool FilePicker::show()
 	for( const std::string& currentFile : mCurrentDirectoryFiles ) {
 		std::stringstream labelBuilder;
 		labelBuilder << "  " << currentFile;
-		if( ImGui::SmallButton( labelBuilder.str().c_str() ) ) {
+		if( ImGui::Selectable( labelBuilder.str().c_str() ) ) {
 			mSelectedPath = fs::path( &mCurrentDirectoryBuffer[0] ).append( currentFile.c_str() );
 			wasSelected = true;
 			break;
