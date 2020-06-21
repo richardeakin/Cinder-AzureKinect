@@ -164,4 +164,13 @@ class Body {
 	std::map<JointType, Joint>	mJoints;
 };
 
+enum class PlaybackStatus {
+	NotLoaded,
+	Ready,
+	EndOfFile,
+	Failed
+};
+
+const char* playbackStatusToString( PlaybackStatus status );
+
 } // namespace ck4a

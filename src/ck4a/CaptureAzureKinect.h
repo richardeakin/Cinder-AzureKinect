@@ -149,6 +149,10 @@ private:
 	std::atomic<double>				mLastProcessDuration = { 0 };
 	std::array<float, 180>			mProcessDurationsBuffer;
 	size_t							mProcessDurationsBufferIndex = 0;		
+
+	std::atomic<double>				mPlaybackLastCaptureTimestamp = { 0 };
+	std::atomic<int64_t>			mSeekTimestep = { -1 };
+	PlaybackStatus					mPlaybackStatus = PlaybackStatus::NotLoaded;
 };
 
 } // namespace ck4a

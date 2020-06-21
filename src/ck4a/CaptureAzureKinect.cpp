@@ -218,6 +218,27 @@ Surface32f makeTableDepth2dTo3d( const k4a_calibration_t &calibration )
 	return surface;
 }
 
+// see sdk k4aviewer's K4ARecordingDockControl::GetCaptureTimestamp() for explanation or get image order
+uint64_t getCaptureTimestampUsec( const k4a_capture_t &capture )
+{
+	const auto &irImage = k4a_capture_get_ir_image( capture );
+	if( irImage ) {
+		return k4a_image_get_device_timestamp_usec( irImage );
+	}
+
+	const auto depthImage = k4a_capture_get_depth_image( capture );
+	if( depthImage ) {
+		return k4a_image_get_device_timestamp_usec( depthImage );
+	}
+
+	const auto colorImage = k4a_capture_get_color_image( capture );
+	if( colorImage ) {
+		return k4a_image_get_device_timestamp_usec( colorImage );
+	}
+
+	return 0;
+}
+
 } // anon
 
 //! Singleton to manager k4a devices
@@ -320,9 +341,11 @@ void AzureKinectManager::onLogMessage( void *context, k4a_log_level_t level, con
 }
 
 struct CaptureAzureKinect::Data {
-	k4a_device_t				mDevice;
-	k4abt_tracker_t				mTracker;
+	k4a_device_t				mDevice = nullptr;
+	k4abt_tracker_t				mTracker = nullptr;
 	k4a_device_configuration_t	mDeviceConfig; // stored mostly for debugging reasons
+	k4a_playback_t				mPlayback = nullptr;
+	k4a_record_configuration_t  mRecordConfig;
 
 	std::map<string, k4abt_skeleton_t> mSkeletons; //! stored each process so that parsing tweaks can continue while paused
 };
@@ -389,6 +412,20 @@ void CaptureAzureKinect::init( const ma::Info &info )
 	}
 	else {
 		mDeviceIndex = info.get<uint32_t>( "deviceIndex", K4A_DEVICE_DEFAULT );
+	}
+
+	if( info.contains( "recordingFile" ) ) {
+		auto p = info.get<fs::path>( "recordingFile" );
+		CI_LOG_I( "recordingFile: " << p );
+		openRecording( p );
+		if( mPlaybackStatus == PlaybackStatus::Ready ) {
+			CI_LOG_I( "recording ready for file: " << mRecordingFilePath << " (id:" << mId << ")" );
+			setStatus( Status::Stopped );
+		}
+		else {
+			setStatus( Status::Failed );
+		}
+		return;
 	}
 
 	if( mRemote ) {
@@ -483,12 +520,16 @@ void CaptureAzureKinect::uninit()
 
 	if( mData->mTracker ) {
 		k4abt_tracker_destroy( mData->mTracker );
-		mData->mTracker = {};
+		mData->mTracker = nullptr;
 		mCurrentBodyFrame = -1;
 	}
 	if( mData->mDevice ) {
 		k4a_device_close( mData->mDevice );
-		mData->mDevice = {};
+		mData->mDevice = nullptr;
+	}
+	if( mData->mPlayback ) {
+		k4a_playback_close( mData->mPlayback );
+		mData->mPlayback = nullptr;
 	}
 
 	clearData();
@@ -600,53 +641,55 @@ void CaptureAzureKinect::threadEntry()
 
 	Timer timer( true );
 
-	// configure stream
-	k4a_device_configuration_t deviceConfig = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-	// TODO: add params for color and depth format and resolution instead (one being disabled)
-	// - will set in "capture" section, although maybe merge "device" params into this
-	if( mColorEnabled ) {
-		deviceConfig.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
-		deviceConfig.color_resolution = K4A_COLOR_RESOLUTION_1080P;
-	}
-	if( mDepthEnabled ) {
-		deviceConfig.depth_mode = DEPTH_MODE;
-	}
-
-	deviceConfig.camera_fps = K4A_FRAMES_PER_SECOND_30; // TODO: expose as param
-	deviceConfig.wired_sync_mode = K4A_WIRED_SYNC_MODE_STANDALONE;
-
-	if( getManager()->isSyncDevicesEnabled() ) {
-		deviceConfig.subordinate_delay_off_master_usec = 0;     // Must be zero for master, subordinates should only use this if they use a different exposure setting than master's (se green_screen docs)
-
-		// Even if color is disabled, we still need to enable a color buffer (see docs on K4A_WIRED_SYNC_MODE_MASTER)
-		if( ! mColorEnabled ) {
-			// TODO: mark mColorEnabled = true here
-			// - will do this once I can use MJPG and use that for in the texture viewer
-			deviceConfig.color_format = K4A_IMAGE_FORMAT_COLOR_MJPG;
-			deviceConfig.color_resolution = K4A_COLOR_RESOLUTION_720P;
+	if( mRecordingFilePath.empty() ) {
+		// configure stream
+		k4a_device_configuration_t deviceConfig = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
+		// TODO: add params for color and depth format and resolution instead (one being disabled)
+		// - will set in "capture" section, although maybe merge "device" params into this
+		if( mColorEnabled ) {
+			deviceConfig.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
+			deviceConfig.color_resolution = K4A_COLOR_RESOLUTION_1080P;
+		}
+		if( mDepthEnabled ) {
+			deviceConfig.depth_mode = DEPTH_MODE;
 		}
 
-		if( mSyncMaster ) {
-			deviceConfig.wired_sync_mode = K4A_WIRED_SYNC_MODE_MASTER;
-			//deviceConfig.synchronized_images_only = true; // TODO: might want this if color is enabled (was only set on master in green_screen, not sure why not all
+		deviceConfig.camera_fps = K4A_FRAMES_PER_SECOND_30; // TODO: expose as param
+		deviceConfig.wired_sync_mode = K4A_WIRED_SYNC_MODE_STANDALONE;
+
+		if( getManager()->isSyncDevicesEnabled() ) {
+			deviceConfig.subordinate_delay_off_master_usec = 0;     // Must be zero for master, subordinates should only use this if they use a different exposure setting than master's (se green_screen docs)
+
+			// Even if color is disabled, we still need to enable a color buffer (see docs on K4A_WIRED_SYNC_MODE_MASTER)
+			if( ! mColorEnabled ) {
+				// TODO: mark mColorEnabled = true here
+				// - will do this once I can use MJPG and use that for in the texture viewer
+				deviceConfig.color_format = K4A_IMAGE_FORMAT_COLOR_MJPG;
+				deviceConfig.color_resolution = K4A_COLOR_RESOLUTION_720P;
+			}
+
+			if( mSyncMaster ) {
+				deviceConfig.wired_sync_mode = K4A_WIRED_SYNC_MODE_MASTER;
+				//deviceConfig.synchronized_images_only = true; // TODO: might want this if color is enabled (was only set on master in green_screen, not sure why not all
+			}
+			else {
+				deviceConfig.wired_sync_mode = K4A_WIRED_SYNC_MODE_SUBORDINATE;
+				deviceConfig.depth_delay_off_color_usec = MIN_TIME_BETWEEN_DEPTH_CAMERA_PICTURES_USEC * mDeviceIndex;
+			}
+
+			// TODO: init powerline and exposure settings
 		}
-		else {
-			deviceConfig.wired_sync_mode = K4A_WIRED_SYNC_MODE_SUBORDINATE;
-			deviceConfig.depth_delay_off_color_usec = MIN_TIME_BETWEEN_DEPTH_CAMERA_PICTURES_USEC * mDeviceIndex;
+
+		mData->mDeviceConfig = deviceConfig;
+
+		if( k4a_device_start_cameras( mData->mDevice, &deviceConfig ) != K4A_RESULT_SUCCEEDED ) {
+			CI_LOG_E( "failed to start cameras for device with id: " << mId );
+			mTimeNeedsReinit = getManager()->getCurrentTime(); // TODO: use chrono::high_resolution_clock() instead
+			return;
 		}
 
-		// TODO: init powerline and exposure settings
+		LOG_CAPTURE_V( "Camera started for device: " << mId << " in << " << timer.getSeconds() << " seconds." );
 	}
-
-	mData->mDeviceConfig = deviceConfig;
-
-	if( k4a_device_start_cameras( mData->mDevice, &deviceConfig ) != K4A_RESULT_SUCCEEDED ) {
-		CI_LOG_E( "failed to start cameras for device with id: " << mId );
-		mTimeNeedsReinit = getManager()->getCurrentTime(); // TODO: use chrono::high_resolution_clock() instead
-		return;
-	}
-
-	LOG_CAPTURE_V( "Camera started for device: " << mId << " in << " << timer.getSeconds() << " seconds." );
 
 	timer.stop();
 	timer.start();
@@ -658,10 +701,18 @@ void CaptureAzureKinect::threadEntry()
 		mCurrentBodyFrame = 0;
 		mTotalBodiesTrackedLastFrame = 0;
 		k4a_calibration_t calibration;
-		if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) != K4A_RESULT_SUCCEEDED ) {
-			CI_LOG_E( "failed to read device calibration for device with id: " << mId );
-			mTimeNeedsReinit = getManager()->getCurrentTime();
-			return;
+		if( ! mRecordingFilePath.empty() ) {
+			if( k4a_playback_get_calibration( mData->mPlayback, &calibration ) != K4A_RESULT_SUCCEEDED ) {
+				CI_LOG_E( "failed to get playback calibration for device with id: " << mId );
+				return;
+			}
+		}
+		else {
+			if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) != K4A_RESULT_SUCCEEDED ) {
+				CI_LOG_E( "failed to read device calibration for device with id: " << mId );
+				mTimeNeedsReinit = getManager()->getCurrentTime();
+				return;
+			}
 		}
 
 		if( k4abt_tracker_create( &calibration, K4ABT_TRACKER_CONFIG_DEFAULT, &mData->mTracker ) != K4A_RESULT_SUCCEEDED ) {
@@ -682,9 +733,12 @@ void CaptureAzureKinect::threadEntry()
 			Timer timer( true );
 			process();
 			mLastProcessDuration = timer.getSeconds();
+			if( mData->mPlayback ) {
+				this_thread::sleep_for( std::chrono::duration<int, std::ratio<1, 30>>( 1 ) ); // TODO: use current capture config settings to determine this time
+			}
 		}
 		else {
-			std::this_thread::sleep_for( chrono::milliseconds( 500 ) );
+			this_thread::sleep_for( 500ms );
 		}
 	}
 
@@ -693,16 +747,53 @@ void CaptureAzureKinect::threadEntry()
 
 void CaptureAzureKinect::process()
 {
-	CI_ASSERT( mData->mDevice );
+	//CI_ASSERT( mData->mDevice ); // no device when in playback mode. TODO: re-enable once Capture subclasses are made
 	CI_ASSERT( mEnabled );
 	CI_ASSERT( isRunning() );
 
 	int32_t waitTimeout = 2000;
-	k4a_capture_t capture;
-	if( k4a_device_get_capture( mData->mDevice, &capture, waitTimeout ) != K4A_RESULT_SUCCEEDED ) {
-		mTimeLastCaptureFailed = getManager()->getCurrentTime();
-		mTimeNeedsReinit = mTimeLastCapture;
-		CI_LOG_E( "k4a_device_get_capture failed for device with id: " << mId );
+	k4a_capture_t capture = nullptr;
+	if( ! mRecordingFilePath.empty() ) {
+		if( mData->mPlayback ) {
+			if( mSeekTimestep >= 0 ) {
+				if( k4a_playback_seek_timestamp( mData->mPlayback, mSeekTimestep, K4A_PLAYBACK_SEEK_BEGIN ) != K4A_RESULT_SUCCEEDED ) {
+					CI_LOG_E( "seek to timestep " << mSeekTimestep << " failed." );
+				}
+				mSeekTimestep = -1;
+				mPlaybackStatus = PlaybackStatus::Ready;
+			}
+			if( mPlaybackStatus == PlaybackStatus::Ready ) {
+				auto result = k4a_playback_get_next_capture( mData->mPlayback, &capture );
+				if( result == K4A_STREAM_RESULT_EOF ) {
+					// End of file reached. Not closing until user hits close button.
+					CI_LOG_I( "EOF" );
+					mPlaybackStatus = PlaybackStatus::EndOfFile;
+					return;
+				}
+				if( result == K4A_STREAM_RESULT_FAILED ) {
+					CI_LOG_E( "Failed to read playback" );
+					mPlaybackStatus = PlaybackStatus::Failed;
+					return;
+				}
+
+				mPlaybackLastCaptureTimestamp = getCaptureTimestampUsec( capture );
+				//CI_LOG_I( "playback timestamp: " << float( mPlaybackLastCaptureTimestamp / 1000000.0f ) );
+			}
+		}
+		else {
+			return;
+		}
+	}
+	else {
+		if( k4a_device_get_capture( mData->mDevice, &capture, waitTimeout ) != K4A_RESULT_SUCCEEDED ) {
+			mTimeLastCaptureFailed = getManager()->getCurrentTime();
+			mTimeNeedsReinit = mTimeLastCapture;
+			CI_LOG_E( "k4a_device_get_capture failed for device with id: " << mId );
+			return;
+		}
+	}
+
+	if( ! capture ) {
 		return;
 	}
 
@@ -974,27 +1065,32 @@ std::vector<Body> CaptureAzureKinect::getBodies() const
 
 void CaptureAzureKinect::openRecording( const ci::fs::path &filePath )
 {
-	// TODO NEXT: open a mkv file and play it, instead of camera
-	// GOAL: read a frame and print it to screen
-	
 	if( ! fs::exists( filePath ) ) {
 		CI_LOG_E( "filepath doesn't exist: " << filePath );
 		return;
 	}
-	// https://docs.microsoft.com/en-us/azure/Kinect-dk/record-playback-api
-	k4a_playback_t playback_handle = NULL;
-	if( k4a_playback_open( filePath.string().c_str(), &playback_handle ) ) {
+	mRecordingFilePath = filePath;
+
+	unique_lock<recursive_mutex> lock( mMutexProcess );
+
+	if( mData->mPlayback ) {
+		CI_LOG_I( "closing current playback handle" );
+		k4a_playback_close( mData->mPlayback );
+		mData->mPlayback = nullptr;
+	}
+
+	if( k4a_playback_open( filePath.string().c_str(), &mData->mPlayback ) ) {
 		CI_LOG_E( "Failed to option k4a playback file at path: " << filePath );
 		return;
 	}
 
-	uint64_t recording_length = k4a_playback_get_last_timestamp_usec( playback_handle );
+	uint64_t recording_length = k4a_playback_get_last_timestamp_usec( mData->mPlayback );
 	CI_LOG_I( "Recording is " << recording_length / 1000000 << " seconds long." );
 
 	// Print the serial number of the device used to record
 	char serial_number[256];
 	size_t serial_number_size = 256;
-	k4a_buffer_result_t buffer_result = k4a_playback_get_tag( playback_handle, "K4A_DEVICE_SERIAL_NUMBER", serial_number, &serial_number_size );
+	k4a_buffer_result_t buffer_result = k4a_playback_get_tag( mData->mPlayback, "K4A_DEVICE_SERIAL_NUMBER", serial_number, &serial_number_size );
 	if( buffer_result == K4A_BUFFER_RESULT_SUCCEEDED ) {
 		CI_LOG_I( "Device serial number: " << serial_number );
 	}
@@ -1005,26 +1101,11 @@ void CaptureAzureKinect::openRecording( const ci::fs::path &filePath )
 		printf( "Tag does not exist. Device serial number was not recorded.\n" );
 	}
 
-	k4a_capture_t capture = NULL;
-	k4a_stream_result_t result = K4A_STREAM_RESULT_SUCCEEDED;
-	while( result == K4A_STREAM_RESULT_SUCCEEDED ) {
-		result = k4a_playback_get_next_capture( playback_handle, &capture );
-		if( result == K4A_STREAM_RESULT_SUCCEEDED ) {
-			// Process capture here
-			k4a_capture_release( capture );
-		}
-		else if( result == K4A_STREAM_RESULT_EOF ) {
-			// End of file reached
-			CI_LOG_I( "EOF" );
-			break;
-		}
-	}
-	if( result == K4A_STREAM_RESULT_FAILED ) {
-		CI_LOG_E( "Failed to read entire recording" );
-		//return;
+	if( k4a_playback_get_record_configuration( mData->mPlayback, &mData->mRecordConfig ) != K4A_RESULT_SUCCEEDED ) {
+		CI_LOG_E( "failed to get record configuration." );
 	}
 
-	k4a_playback_close( playback_handle );
+	mPlaybackStatus = PlaybackStatus::Ready;
 }
 
 ci::Surface8u CaptureAzureKinect::getColorSurfaceCloned() const
@@ -1112,17 +1193,28 @@ void CaptureAzureKinect::update()
 
 		// create conversion table. TODO: make this optional, it is only necessary for point cloud stuff
 		if( mDepthEnabled && ! mTableDepth2d3dTexture ) {
+			auto format = gl::Texture2d::Format().label( "Capture - table depth 2d->3d (" + mId + ")" )
+				.internalFormat( GL_RGB32F )
+				.minFilter( GL_LINEAR ).magFilter( GL_LINEAR );
+
 			k4a_calibration_t calibration;
-			if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) == K4A_RESULT_SUCCEEDED ) {
-				mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
-				auto format = gl::Texture2d::Format().label( "Capture - table depth 2d->3d (" + mId + ")" )
-					.internalFormat( GL_RGB32F )
-					.minFilter( GL_LINEAR ).magFilter( GL_LINEAR );
-				//format.dataType(GL_FLOAT); // TODO: remove if not needed
-				mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
+			if( mData->mPlayback && mPlaybackStatus == PlaybackStatus::Ready ) {
+				if( k4a_playback_get_calibration( mData->mPlayback, &calibration ) == K4A_RESULT_SUCCEEDED ) {
+					mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
+					mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
+				}
+				else {
+					CI_LOG_E( "failed to read playback calibration for device with id: " << mId );
+				}
 			}
 			else {
-				CI_LOG_E( "failed to read device calibration for device with id: " << mId );
+				if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) == K4A_RESULT_SUCCEEDED ) {
+					mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
+					mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
+				}
+				else {
+					CI_LOG_E( "failed to read device calibration for device with id: " << mId );
+				}
 			}
 		}
 	}
@@ -1265,8 +1357,43 @@ void CaptureAzureKinect::updateUI()
 
 	if( im::CollapsingHeader( "Recording / Playback", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		if( im::Button( "open" ) ) {
-			// TODO: add basic file api
-			openRecording( "E:\\Dropbox\\work\\framestore\\sentinal\\kinect_recordings\\output.mkv" );
+			// TODO: should set the recording path then re-init instead
+			openRecording( mRecordingFilePath );
+		}
+		if( mData->mPlayback ) {
+			im::SameLine();
+			if( im::Button( "close" ) ) {
+				k4a_playback_close( mData->mPlayback );
+				mData->mPlayback = nullptr;
+			}
+
+			im::Text( "%s", mRecordingFilePath.string().c_str() );
+			im::Text( "playback status: %s", playbackStatusToString( mPlaybackStatus ) );
+
+			uint64_t recording_length = k4a_playback_get_last_timestamp_usec( mData->mPlayback );
+			im::Text( "%0.3f / %0.3f seconds", float( mPlaybackLastCaptureTimestamp / 1000000.0f ), float( recording_length / 1000000.0f ) );
+
+			// TODO: add "<<", "<", "play / pause", ">", ">>" controls
+			if( im::Button( "seek to zero" ) ) {
+				mSeekTimestep = 0;
+			}
+
+			if( ImGui::TreeNode( "record configuration" ) ) {
+				const auto &config = mData->mRecordConfig;
+				im::Text( "color_format: %s", imageFormatToString( config.color_format ) );
+				im::Text( "color_resolution: %s", colorResolutionToString( config.color_resolution ) );
+				im::Text( "depth_mode: %s", depthModeToString( config.depth_mode ) );
+				im::Text( "camera_fps: %s", cameraFpsToString( config.camera_fps ) );
+				im::Text( "color_track_enabled: %d", config.color_track_enabled );
+				im::Text( "depth_track_enabled: %d", config.depth_track_enabled );
+				im::Text( "ir_track_enabled: %d", config.ir_track_enabled );
+				im::Text( "imu_track_enabled: %d", config.imu_track_enabled );
+				im::Text( "depth_delay_off_color_usec: %d", config.depth_delay_off_color_usec );
+				im::Text( "wired_sync_mode: %s", wiredSyncModeToString( config.wired_sync_mode ) );
+				im::Text( "subordinate_delay_off_master_usec: %d", config.subordinate_delay_off_master_usec );
+				im::Text( "start_timestamp_offset_usec: %d", config.start_timestamp_offset_usec );
+				ImGui::TreePop();
+			}
 		}
 	}
 
