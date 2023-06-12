@@ -21,7 +21,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "ck4a/CaptureManager.h"
 
-#include "mason/extra/ImGuiStuff.h"
+#include "mason/imx/ImGuiStuff.h"
 
 #include "cinder/Log.h"
 #include "cinder/osc/Osc.h"

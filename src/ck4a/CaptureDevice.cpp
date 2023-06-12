@@ -22,7 +22,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "ck4a/CaptureDevice.h"
 #include "ck4a/CaptureManager.h"
 
-#include "mason/extra/ImGuiStuff.h"
+#include "mason/imx/ImGuiStuff.h"
 
 using namespace ci;
 using namespace std;
