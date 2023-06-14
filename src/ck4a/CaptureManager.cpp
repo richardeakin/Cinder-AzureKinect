@@ -411,10 +411,7 @@ void CaptureManager::initOSCListeners()
 		return;
 	}
 
-	// note: I added this method here https://github.com/richardeakin/Cinder/commit/01542ac4d5caa3993218e9080c92b49dd0577298
-	// - but I think we will switch to using UDP directly, and this method never made it into the main repo
-	// - TODO: until that happens, may need to be making sure this doesn't get called on the same OSCReceiver more than once
-	//mOSCReceiver->removeAllListeners();
+	mOSCReceiver->removeAllListeners();
 
 	//mOSCReceiver->setListener( "/test/message",
 	//	[&]( const osc::Message &msg ) {
@@ -740,14 +737,14 @@ void CaptureManager::updateUI()
 			if( mOSCReceiver ) {
 				if( im::TreeNodeEx( "Receiver", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 					im::Text( "local endpoint: %s:%d", mOSCReceiver->getLocalEndpoint().address().to_string().c_str(), mOSCReceiver->getLocalEndpoint().port() );
-					//if( im::TreeNodeEx( "Listeners", ImGuiTreeNodeFlags_DefaultOpen ) ) {
-					//	auto listeners = mOSCReceiver->getListeners();
-					//	for( const auto &l : listeners ) {
-					//		im::BulletText( "%s", l.first.c_str() );
-					//	}
+					if( im::TreeNodeEx( "Listeners", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+						auto listeners = mOSCReceiver->getListeners();
+						for( const auto &l : listeners ) {
+							im::BulletText( "%s", l.first.c_str() );
+						}
 
-					//	im::TreePop();
-					//}
+						im::TreePop();
+					}
 					im::TreePop();
 				}
 			}
