@@ -519,10 +519,9 @@ void appendToMessage( osc::Message &msg, const vec3 &v )
 void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 {
 	// master host doesn't need to send bodies, it will collect them all
-	// TODO: enable this - for now I'm sending bodies across to all hosts
-	//if( mMasterHost ) {
-	//	return;
-	//}
+	if( mMasterHost ) {
+		return;
+	}
 
 	// capture/device/{deviceId}
 	// send body over the wire
