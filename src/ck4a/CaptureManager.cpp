@@ -86,9 +86,7 @@ void CaptureManager::init( const ma::Info& info )
 	}
 	else {
 		CI_LOG_I( "networking disabled" );
-		// TODO: error reporting
 	}
-
 
 	auto devices = info.get<vector<ma::Info>>( "devices" );
 	bool haveSyncMaster = false;
@@ -413,12 +411,6 @@ void CaptureManager::initOSCListeners()
 
 	mOSCReceiver->removeAllListeners();
 
-	//mOSCReceiver->setListener( "/test/message",
-	//	[&]( const osc::Message &msg ) {
-	//		CI_LOG_I( "/test/message: " << msg );
-	//	}
-	//);
-
 #if 0
 	mOSCReceiver->setListener( "*", 
 		[&]( const osc::Message &msg ) {
@@ -442,7 +434,7 @@ void CaptureManager::initOSCListeners()
 		// TODO NEXT: figure out to what extent I can parse this data
 		mOSCReceiver->setListener( "/capture/device/*",
 			[this]( const osc::Message &msg ) {
-				CI_LOG_I( "received message: " << msg );
+				LOG_NETWORK_V( "received message: " << msg );
 			}
 		);
 
