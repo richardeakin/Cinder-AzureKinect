@@ -480,7 +480,7 @@ void CaptureAzureKinect::init( const ma::Info &info )
 				CI_VERIFY( result == K4A_RESULT_SUCCEEDED );
 			}
 			catch( exception &exc ) {
-				CI_LOG_E( "Failed to set color control for device with index: " << mDeviceIndex );
+				CI_LOG_EXCEPTION( "Failed to set color control for device with index: " << mDeviceIndex, exc );
 			}
 		}
 
@@ -983,7 +983,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 			//x = sin( getManager()->getCurrentTime() * 3.0 );
 			//x = lmap<float>( x, -1, 1, 7, 75 );
 
-			x = fmod( getManager()->getCurrentTime() * 1.0, 2.0f ) - 1.0f;
+			x = float( fmod( getManager()->getCurrentTime() * 1.0, 2.0 ) - 1.0 );
 			x = fabsf( x );
 			x = lmap<float>( x, 0, 1, 7, 75 );
 
