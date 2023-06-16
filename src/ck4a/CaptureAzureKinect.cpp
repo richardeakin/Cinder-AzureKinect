@@ -385,6 +385,7 @@ void CaptureAzureKinect::init( const ma::Info &info )
 	mDepthEnabled = info.get( "depth", mDepthEnabled ); // TODO: pass in a depth / color format instead, or "disabld"
 	mColorEnabled = info.get( "color", mColorEnabled );
 	mBodyTrackingEnabled = info.get( "bodyTracking", mBodyTrackingEnabled );
+	mBodyIndexMapEnabled = info.get( "bodyIndexMap", mBodyIndexMapEnabled );
 	mDebugColor = info.get( "debugColor", mDebugColor );
 	mPos = info.get( "pos", mPos );
 	mOrientation = info.get( "orientation", mOrientation );
@@ -557,10 +558,14 @@ void CaptureAzureKinect::clearData()
 	lock_guard<recursive_mutex> lock( mMutexData );
 
 	mColorSurface = {};
+	mDepthChannel = {};
+	mBodyIndexMapChannel = {};
+	mTableDepth2d3dSurface = {};
+
 	mColorTexture = {};
 	mDepthTexture = {};
-	mDepthTexture = {};
 	mTableDepth2d3dTexture = {};
+	mBodyIndexMapTexture = {};
 
 	mBodies.clear();
 	mData->mSkeletons.clear();
@@ -937,8 +942,30 @@ void CaptureAzureKinect::process()
 					mTotalBodiesTrackedLastFrame = numBodies;
 				}
 
+				if( mBodyIndexMapEnabled ) {
+					// from docs: Body Index map is the body instance segmentation map.
+					// Each pixel maps to the corresponding pixel in the depth image or the ir image.
+					// The value for each pixel represents which body the pixel belongs to.
+					// It can be either background (value K4ABT_BODY_INDEX_MAP_BACKGROUND) or the index of a detected k4abt_body_t.
+					// Each pixel is an 8-bit value. 
+					auto image = k4abt_frame_get_body_index_map( bodyFrame );
+					if( image ) {
+						uint8_t *data = (uint8_t *)k4a_image_get_buffer( image );
+						int width = k4a_image_get_width_pixels( image );
+						int height = k4a_image_get_height_pixels( image );
+						int stride = k4a_image_get_stride_bytes( image );
+						Channel8u channel( width, height, stride, 1, data );
+						mBodyIndexMapChannel = channel.clone( true );
+						k4a_image_release( image );
+					}
+					else {
+						CI_LOG_E( "null body index map image for device with id: " << mId );
+					}
+				}
+
 				mCurrentBodyFrame += 1; // keep track of how many body frames we've processed
 			}
+
 			k4abt_frame_release( bodyFrame );
 		}
 		else {
@@ -1212,6 +1239,16 @@ void CaptureAzureKinect::update()
 			}
 		}
 
+		if( mBodyIndexMapEnabled && mBodyIndexMapChannel.getSize() != ivec2( 0 ) ) {
+			if( mBodyIndexMapTexture && mBodyIndexMapTexture->getSize() == mBodyIndexMapChannel.getSize() ) {
+				mBodyIndexMapTexture->update( mBodyIndexMapChannel );
+			}
+			else {
+				auto format = gl::Texture2d::Format().label( "Capture - body index map (" + mId + ")" );
+				mBodyIndexMapTexture = gl::Texture::create( mBodyIndexMapChannel, format );
+			}
+		}
+
 		// create conversion table. TODO: make this optional, it is only necessary for point cloud stuff
 		if( mDepthEnabled && ! mTableDepth2d3dTexture ) {
 			auto format = gl::Texture2d::Format().label( "Capture - table depth 2d->3d (" + mId + ")" )
@@ -1342,6 +1379,14 @@ void CaptureAzureKinect::updateUI()
 		reinit();
 	}
 
+	if( ! mBodyTrackingEnabled ) {
+		imx::BeginDisabled();
+	}
+	im::Checkbox( "body index map", &mBodyIndexMapEnabled );
+	if( ! mBodyTrackingEnabled ) {
+		imx::EndDisabled();
+	}
+
 	im::Checkbox( "log verbose", &mLogVerbose );
 	im::ColorEdit3( "debug color", &mDebugColor.r, ImGuiColorEditFlags_Float );
 
@@ -1350,7 +1395,7 @@ void CaptureAzureKinect::updateUI()
 	if( im::CollapsingHeader( "Profiling" ) ) {
 		//double processDuration = mLastProcessDuration;
 		im::Text( "process duration: %0.2fms", float( mLastProcessDuration * 1000.0 ) );
-		ImGui::PlotLines( "##process duration lines", mProcessDurationsBuffer.data(), int( mProcessDurationsBuffer.size() ), 0, 0, 0.0f, 120.0f, ImVec2( ImGui::GetContentRegionAvailWidth(), 90 ) );
+		im::PlotLines( "##process duration lines", mProcessDurationsBuffer.data(), int( mProcessDurationsBuffer.size() ), 0, 0, 0.0f, 120.0f, ImVec2( ImGui::GetContentRegionAvailWidth(), 90 ) );
 	}
 	if( im::CollapsingHeader( "Calibration", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		im::DragFloat3( "pos", &mPos.x, 0.5f );
@@ -1519,6 +1564,9 @@ void CaptureAzureKinect::updateUI()
 		imx::Texture2d( "color", mColorTexture, opts );
 		imx::TextureDepth( "depth", mDepthTexture, opts );
 		imx::Texture2d( "depth table", mTableDepth2d3dTexture, opts );
+		if( mBodyIndexMapEnabled ) {
+			imx::Texture2d( "body index map", mBodyIndexMapTexture, opts );
+		}
 	}
 
 	im::End();
