@@ -438,13 +438,12 @@ void CaptureManager::initOSCListeners()
 			}
 		);
 
-		// TODO NEXT: figure out to what extent I can parse this data
-		mOSCReceiver->setListener( "/capture/device/*",
+		mOSCReceiver->setListener( "/capture/body",
 			[this]( const osc::Message &msg ) {
-				LOG_NETWORK_V( "received message (size: " << msg.getPacketSize() << " bytes): " << msg );
+				LOG_NETWORK_V( "received body message (size: " << msg.getPacketSize() << " bytes): " << msg );
+				receiveBody( msg );
 			}
 		);
-
 	}
 }
 
@@ -514,10 +513,11 @@ struct JointBlob {
 
 // note: called from Capture process thread
 // sends message with args:
-// 0: id str
-// 1: is active
-// 2: num joints
-// 3: joints blob
+// 0: device id str
+// 1: body id str
+// 2: is active
+// 3: num joints
+// 4: joints blob
 void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 {
 	// master host doesn't need to send bodies, it will collect them all
@@ -530,9 +530,10 @@ void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 		return;
 	}
 
-	osc::Message msg( "/capture/device/" + device->getId() + "/body" );
+	osc::Message msg( "/capture/body" );
 	msg.appendCurrentTime();
-	msg.append( body.getId().c_str() );
+	msg.append( device->getId() );
+	msg.append( body.getId() );
 	msg.append( body.isActive() );
 	msg.append( (int32_t)body.getJoints().size() );
 
@@ -552,10 +553,52 @@ void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 		joints.push_back( b );
 	}
 
-	msg.appendBlob( joints.data(), joints.size() * sizeof( JointBlob ) );
+	msg.appendBlob( joints.data(), uint32_t( joints.size() * sizeof( JointBlob ) ) );
 
 	LOG_NETWORK_V( "sending body message for body with id: " << body.getId() << ", num joints: " << joints.size() << ", packet size: " << msg.getPacketSize() << " bytes." );
 	sendMessage( msg );
+}
+
+void CaptureManager::receiveBody( const osc::Message &msg )
+{
+	// only master receives bodies
+	if( ! mMasterHost ) {
+		return;
+	}
+
+	string deviceId = msg.getArgString( 0 ); // TODO: probably need to store this on the Body so we know how to transform
+	auto device = getDevice( deviceId );
+	if( ! device ) {
+		CI_LOG_E( "recieved a body with unknown device id: " << deviceId );
+		return;
+	}
+
+	Body body;
+	body.mId = msg.getArgChar( 1 );
+	body.mActive = msg.getArgBool( 2 );
+
+	int32_t numJoints = msg.getArgInt32( 3 );
+	auto jointsBuffer = msg.getArgBlob( 4 );
+	CI_ASSERT( jointsBuffer.getSize() == sizeof(JointBlob) * numJoints );
+
+	auto joints = (JointBlob *)jointsBuffer.getData();
+	for( int i = 0; i < numJoints; i++ ) {
+		auto jointBlob = joints[i];
+
+		Joint joint;
+		joint.mType = (JointType)jointBlob.type;
+		joint.mPos = jointBlob.pos;
+		joint.mVelocity = jointBlob.vel;
+		joint.mConfidence = (JointConfidence)jointBlob.confidence;
+		joint.mOrientation = jointBlob.orientation;
+		joint.mTimeFirstTracked = jointBlob.timeFirstTracked;
+
+		body.mJoints[joint.mType] = joint;
+	}
+
+	LOG_NETWORK_V( "\t- inserting body with device id: " << deviceId << ", bodyId: " << body.mId << ", num joints: " << body.mJoints.size() );
+
+	device->insertBody( body );
 }
 
 void CaptureManager::onLocalDeviceStatusChanged( CaptureDevice *device )

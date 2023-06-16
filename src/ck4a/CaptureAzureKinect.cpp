@@ -1075,6 +1075,13 @@ vector<Body> CaptureAzureKinect::getBodies() const
 	return result;
 }
 
+void CaptureAzureKinect::insertBody( const Body &body )
+{
+	lock_guard<recursive_mutex> lock_guard( mMutexData );
+
+	mBodies[body.mId] = body;
+}
+
 // ----------------------------------------------------------------------------------------------------
 // methods called from main update loop
 // ----------------------------------------------------------------------------------------------------

@@ -109,7 +109,8 @@ private:
 	void sendTestMessage();
 	void sendTestValue();
 	void sendMessage( const ci::osc::Message &msg );
-	
+	void receiveBody( const ci::osc::Message &msg );
+
 	struct Host {
 		std::string mId;
 		bool mMaster = false;

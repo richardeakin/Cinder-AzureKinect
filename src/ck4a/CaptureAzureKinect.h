@@ -78,6 +78,7 @@ public:
 	// Thread-safe data access
 
 	std::vector<Body> getBodies() const;
+	void insertBody( const Body &body );
 	// ------------------------------------
 
 
