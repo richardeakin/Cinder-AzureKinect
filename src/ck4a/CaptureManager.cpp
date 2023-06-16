@@ -513,11 +513,12 @@ struct JointBlob {
 
 // note: called from Capture process thread
 // sends message with args:
-// 0: device id str
-// 1: body id str
-// 2: is active
-// 3: num joints
-// 4: joints blob
+// 0: timestamp (NTP)
+// 1: device id str
+// 2: body id str
+// 3: is active
+// 4: num joints
+// 5: joints blob
 void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 {
 	// master host doesn't need to send bodies, it will collect them all
@@ -566,7 +567,12 @@ void CaptureManager::receiveBody( const osc::Message &msg )
 		return;
 	}
 
-	string deviceId = msg.getArgString( 0 ); // TODO: probably need to store this on the Body so we know how to transform
+	uint32_t argIndex = 0;
+
+	// TODO: store this on body.mTimeLastTracked in correct units. May want to use our own time / clock for simplicity
+	auto timestamp = msg.getArgTime( argIndex++ );
+
+	string deviceId = msg.getArgString( argIndex++ );
 	auto device = getDevice( deviceId );
 	if( ! device ) {
 		CI_LOG_E( "recieved a body with unknown device id: " << deviceId );
@@ -574,11 +580,12 @@ void CaptureManager::receiveBody( const osc::Message &msg )
 	}
 
 	Body body;
-	body.mId = msg.getArgChar( 1 );
-	body.mActive = msg.getArgBool( 2 );
+	body.mId = msg.getArgString( argIndex++ );
+	body.mActive = msg.getArgBool( argIndex++ );
+	body.mTimeLastTracked = getCurrentTime();
 
-	int32_t numJoints = msg.getArgInt32( 3 );
-	auto jointsBuffer = msg.getArgBlob( 4 );
+	int32_t numJoints = msg.getArgInt32( argIndex++ );
+	auto jointsBuffer = msg.getArgBlob( argIndex++ );
 	CI_ASSERT( jointsBuffer.getSize() == sizeof(JointBlob) * numJoints );
 
 	auto joints = (JointBlob *)jointsBuffer.getData();
