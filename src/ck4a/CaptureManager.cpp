@@ -39,6 +39,13 @@ namespace {
 
 bool sLogNetworkVerbose = false;
 
+void appendToMessage( osc::Message &msg, const vec3 &v )
+{
+	msg.append( v.x );
+	msg.append( v.y );
+	msg.append( v.z );
+}
+
 } // anon
 
 CaptureManager::CaptureManager()
@@ -434,7 +441,7 @@ void CaptureManager::initOSCListeners()
 		// TODO NEXT: figure out to what extent I can parse this data
 		mOSCReceiver->setListener( "/capture/device/*",
 			[this]( const osc::Message &msg ) {
-				LOG_NETWORK_V( "received message: " << msg );
+				LOG_NETWORK_V( "received message (size: " << msg.getPacketSize() << " bytes): " << msg );
 			}
 		);
 
@@ -499,15 +506,7 @@ void CaptureManager::sendMessage( const osc::Message &msg )
 	);
 }
 
-void appendToMessage( osc::Message &msg, const vec3 &v )
-{
-	msg.append( v.x );
-	msg.append( v.y );
-	msg.append( v.z );
-}
-
 // note: called from Capture process thread
-// TODO: try sending as a bundle
 void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 {
 	// master host doesn't need to send bodies, it will collect them all
@@ -515,26 +514,45 @@ void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 		return;
 	}
 
-	// capture/device/{deviceId}
-	// send body over the wire
+	if( ! mOSCSender ) {
+		LOG_NETWORK_V( "Error: null OSC Sender" );
+		return;
+	}
+
+	// send body over the wire in a single bundle
+	osc::Bundle bundle;
+	bundle.setTimetag( osc::time::get_current_ntp_time() );
 
 	string bodyAddress = "/capture/device/" + device->getId() + "/body/" + body.getId();
 
-	osc::Message msg( bodyAddress );
-	msg.append( body.isActive() );
+	osc::Message activeMsg( bodyAddress + "/active" );
+	activeMsg.append( body.isActive() );
 
-	sendMessage( msg );
+	//sendMessage( activeMsg );
+	bundle.append( activeMsg );
 
 	// first: joint by joint
 	// joint addresses: .../body/{bodyId}/joints/{jointId}
 	for( const auto &jp : body.getJoints() ) {
 		const auto &joint = jp.second;
 
-		osc::Message msg( bodyAddress + "/joints/" + to_string( (int)jp.first ) );
-		appendToMessage( msg, joint.mPos );
-		sendMessage( msg );
+		osc::Message jointMsg( bodyAddress + "/joints/" + to_string( (int)jp.first ) );
+		appendToMessage( jointMsg, joint.mPos );
+		//sendMessage( jointMsg );
+		bundle.append( jointMsg );
 	}
 
+	LOG_NETWORK_V( "sending bundle for body with id: " << body.getId() << ", packet size: " << bundle.getPacketSize() << " bytes." );
+	
+	lock_guard<mutex> lock( mMutexSender );
+	mOSCSender->send( bundle,
+		[]( asio::error_code error ) {
+			CI_LOG_E( "\t- error sending message: " << error.message() << ", value: " << error.value() );
+		},
+		[=] {
+			//LOG_NETWORK_V( "\t- successfully sent message at time: " << getCurrentTime() );
+		}
+	);
 }
 
 void CaptureManager::onLocalDeviceStatusChanged( CaptureDevice *device )
