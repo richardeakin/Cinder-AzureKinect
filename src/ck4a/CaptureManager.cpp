@@ -479,8 +479,6 @@ void CaptureManager::sendTestValue()
 	sendMessage( msg );
 }
 
-#define DEBUG_OSC_MESSAGES 0
-
 void CaptureManager::sendMessage( const osc::Message &msg )
 {
 	if( ! mOSCSender ) {
@@ -489,12 +487,6 @@ void CaptureManager::sendMessage( const osc::Message &msg )
 	}
 
 	lock_guard<mutex> lock( mMutexSender );
-
-#if DEBUG_OSC_MESSAGES
-	// FIXME: figure out why this msg print isn't working
-	CI_LOG_I( "time: " << getCurrentTime() << "] sending message:\n" << msg );
-	//CI_LOG_I( "\t- arg 0: " << msg.getArg<float>( 0 ) );
-#endif
 
 	mOSCSender->send( msg,
 		[]( asio::error_code error ) {
@@ -506,7 +498,26 @@ void CaptureManager::sendMessage( const osc::Message &msg )
 	);
 }
 
+namespace {
+//! Body type that gets sent over OSC as a Blob (void *)
+
+struct JointBlob {
+	int type = 1000; // JointType::Unknown
+	vec3 pos;
+	vec3 vel;
+	int confidence = 0;
+	quat orientation;
+	double timeFirstTracked = -1;
+};
+
+}
+
 // note: called from Capture process thread
+// sends message with args:
+// 0: id str
+// 1: is active
+// 2: num joints
+// 3: joints blob
 void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 {
 	// master host doesn't need to send bodies, it will collect them all
@@ -519,40 +530,32 @@ void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 		return;
 	}
 
-	// send body over the wire in a single bundle
-	osc::Bundle bundle;
-	bundle.setTimetag( osc::time::get_current_ntp_time() );
+	osc::Message msg( "/capture/device/" + device->getId() + "/body" );
+	msg.appendCurrentTime();
+	msg.append( body.getId().c_str() );
+	msg.append( body.isActive() );
+	msg.append( (int32_t)body.getJoints().size() );
 
-	string bodyAddress = "/capture/device/" + device->getId() + "/body/" + body.getId();
-
-	osc::Message activeMsg( bodyAddress + "/active" );
-	activeMsg.append( body.isActive() );
-
-	//sendMessage( activeMsg );
-	bundle.append( activeMsg );
-
-	// first: joint by joint
-	// joint addresses: .../body/{bodyId}/joints/{jointId}
+	// pack joints in a Blob
+	vector<JointBlob> joints;
 	for( const auto &jp : body.getJoints() ) {
 		const auto &joint = jp.second;
 
-		osc::Message jointMsg( bodyAddress + "/joints/" + to_string( (int)jp.first ) );
-		appendToMessage( jointMsg, joint.mPos );
-		//sendMessage( jointMsg );
-		bundle.append( jointMsg );
+		JointBlob b;
+		b.type = (int)joint.mType;
+		b.pos = joint.mPos;
+		b.vel = joint.mVelocity;
+		b.confidence = (int)joint.mConfidence;
+		b.orientation = joint.mOrientation;
+		b.timeFirstTracked = joint.mTimeFirstTracked;
+
+		joints.push_back( b );
 	}
 
-	LOG_NETWORK_V( "sending bundle for body with id: " << body.getId() << ", packet size: " << bundle.getPacketSize() << " bytes." );
-	
-	lock_guard<mutex> lock( mMutexSender );
-	mOSCSender->send( bundle,
-		[]( asio::error_code error ) {
-			CI_LOG_E( "\t- error sending message: " << error.message() << ", value: " << error.value() );
-		},
-		[=] {
-			//LOG_NETWORK_V( "\t- successfully sent message at time: " << getCurrentTime() );
-		}
-	);
+	msg.appendBlob( joints.data(), joints.size() * sizeof( JointBlob ) );
+
+	LOG_NETWORK_V( "sending body message for body with id: " << body.getId() << ", num joints: " << joints.size() << ", packet size: " << msg.getPacketSize() << " bytes." );
+	sendMessage( msg );
 }
 
 void CaptureManager::onLocalDeviceStatusChanged( CaptureDevice *device )
