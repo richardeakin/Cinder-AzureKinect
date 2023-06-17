@@ -28,6 +28,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "cinder/app/KeyEvent.h"
 
 #include <vector>
+#include <set>
+#include <map>
 
 namespace cinder { namespace osc { 
 
@@ -97,6 +99,8 @@ public:
 
 	void sendBodyTracked( const CaptureDevice *device, Body body );
 
+	const std::map<std::string, Body>& getMergedBodies() const	{ return mMergedBodies; }
+
 private:
 	// non-copyable
 	CaptureManager( const CaptureManager& ) = delete;
@@ -110,6 +114,7 @@ private:
 	void sendTestValue();
 	void sendMessage( const ci::osc::Message &msg );
 	void receiveBody( const ci::osc::Message &msg );
+	void mergeBodies();
 
 	struct Host {
 		std::string mId;
@@ -129,10 +134,15 @@ private:
 	bool    mPaused = false; //! If true, will leave devices open but data will not be updated (for development)
 	bool	mUIEnabled = true;
 	bool    mSyncDevicesEnabled = false;
+	bool	mMergeMultiDevice = false; //! If true, merges bodies from multiple devices into one container, stored on Capturemanager
+	float	mJointDistanceConsideredSame = 15;
 	double	mMaxSecondsUntilBodyRemoved = 0.1f;
 	float	mMaxBodyDistance = 250;
 	double  mHeartbeatSeconds = 2;
 	bool    mVerboseLogging = false;
+
+	std::map<std::string, Body>	mMergedBodies;
+	std::set<JointType>			mMergeResolveJoints;
 
 	std::vector<CaptureAzureKinectRef>		mCaptureDevices;
 

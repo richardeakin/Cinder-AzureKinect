@@ -1002,25 +1002,9 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		joint.mPos *= vec3( -1, -1, 1 ); // flip x and y axes
 		joint.mPos += mPos; // translate relative to room
 
-
-		// DEBUG: hacking pos.x to be a certain shape when tracked, for gesture handwave work
-		if( 0 ) {
-			float x;
-
-			//x = sin( getManager()->getCurrentTime() * 3.0 );
-			//x = lmap<float>( x, -1, 1, 7, 75 );
-
-			x = float( fmod( getManager()->getCurrentTime() * 1.0, 2.0 ) - 1.0 );
-			x = fabsf( x );
-			x = lmap<float>( x, 0, 1, 7, 75 );
-
-			joint.mPos.x = x;
-		}
-
-
 		// joint orientation:
 		// - start with an orientation to go from kinect camera -> opengl
-		// - then apply the rotation that goes from the t-pose image to the depth cam's coordinate system
+		// - then apply the rotation that goes from the t-pose image to the depth cam's coordinat
 		auto fromKinectRot = glm::angleAxis( glm::radians( 180.0f ), vec3( 0, 0, 1 ) );
 		auto q = fromKinectRot * toQuat( jointKinect.orientation );
 
@@ -1069,7 +1053,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		body->mCenterJointType = body->mJoints.begin()->first;
 	}
 
-	const float maxDistance = getManager()->getMaxBodyDistance();
+	const float maxDistance = getManager()->getMaxBodyDistance(); // FIXME: how is this zero
 	if( maxDistance < 0 ) {
 		// max body distance filtering disabled, consider all bodies
 		return true;
@@ -1087,7 +1071,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 }
 
 // ----------------------------------------------------------------------------------------------------
-// Thread-safe  data access
+// Thread-safe ata access
 // ----------------------------------------------------------------------------------------------------
 
 vector<Body> CaptureAzureKinect::getBodies() const

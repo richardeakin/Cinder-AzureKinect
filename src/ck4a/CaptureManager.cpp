@@ -66,6 +66,8 @@ void CaptureManager::init( const ma::Info& info )
 	mSyncDevicesEnabled = info.get( "syncDevices", mSyncDevicesEnabled );
 	mMaxSecondsUntilBodyRemoved = info.get( "maxSecondsUntilBodyRemoved", mMaxSecondsUntilBodyRemoved );
 	mMaxBodyDistance = info.get( "maxBodyDistance", mMaxBodyDistance );
+	mMergeMultiDevice = info.get( "mergeMultiDevice", mMergeMultiDevice );
+	mJointDistanceConsideredSame = info.get( "jointMatchMaxDistance", mJointDistanceConsideredSame );
 
 	// parse hosts
 	mNetworkingEnabled = info.get<bool>( "networkingEnabled", mNetworkingEnabled );
@@ -138,6 +140,8 @@ void CaptureManager::save( ma::Info& info ) const
 	info["heartbeatSeconds"] = mHeartbeatSeconds;
 	info["maxSecondsUntilBodyRemoved"] = mMaxSecondsUntilBodyRemoved;
 	info["maxBodyDistance"] = mMaxBodyDistance;
+	info["mergeMultiDevice"] = mMergeMultiDevice;
+	info["jointMatchMaxDistance"] = mJointDistanceConsideredSame;
 
 	std::vector<ma::Info> devices;
 	for( const auto &device : mCaptureDevices ) {
@@ -298,6 +302,151 @@ void CaptureManager::update()
 	for( const auto &device : mCaptureDevices ) {
 		device->update();
 	}
+
+	if( mMergeMultiDevice ) {
+		mergeBodies();
+	}
+}
+
+// ----------------------------------------------------------------------------------------------------
+// Body Merging
+// ----------------------------------------------------------------------------------------------------
+
+#define DEBUG_BODY_UI 0
+
+string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId )
+{
+	return deviceId + "-" + bodyId;
+}
+
+void CaptureManager::mergeBodies()
+{
+	mMergeResolveJoints = {
+		JointType::Head,
+	};
+
+	// TODO: use more complete set
+	//mMergeResolveJoints = {
+	//	JointType::Head,
+	//	JointType::SpineNavel,
+	//	JointType::SpineChest,
+	//	JointType::Neck
+	//};
+
+	map<std::string, Body> matchedBodies;
+
+	// match up the bodiesA from multiple cameras
+	// - their current ids don't mean anything, will have to asign new ones
+	// - only compare bodiesA to thoe from other devices
+
+#if DEBUG_BODY_UI
+	im::Begin( "Debug Resolve Bodies" );
+#endif
+
+	for( int deviceIndex = 0; deviceIndex < getNumDevices(); deviceIndex++ ) {
+		const auto &device = mCaptureDevices[deviceIndex];
+		if( ! device->isEnabled() ) {
+			continue;
+		}
+
+		auto bodiesA = device->getBodies();
+
+#if DEBUG_BODY_UI
+		im::BulletText( "device index: %d, bodies: %d", deviceIndex , bodiesA.size() );
+		im::Indent();
+#endif
+
+		for( const auto &bodyA : bodiesA ) {
+			// TODO: for loop over mMergeResolveJoints
+			// - but could also just say if the heads are far enough apart, don't consider it all
+			//    - this effectively binning the bodies relative to their head
+			//    - or use the body's center pos
+			const Joint *jointA = bodyA.getJoint( JointType::Head );
+			// if we have the main jointA, compare it to those in matchedBodies
+			if( jointA && (int)jointA->mConfidence >= (int)JointConfidence::Medium ) {
+				// if we're on the first device, just add these bodiesA to the map
+				if( deviceIndex == 0 ) {
+					string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
+					Body bodyCopy = bodyA;
+					bodyCopy.mId = key;
+					auto resultIt = matchedBodies.insert( { key, bodyCopy } );
+					CI_VERIFY( resultIt.second );
+
+#if DEBUG_BODY_UI
+					im::BulletText( "added body with key: %s", key.c_str() );
+#endif
+				}
+				else {
+					// compare this device's bodies to those in matchedBodies
+					bool bodyMatched = false;
+					for( auto &mp : matchedBodies ) {
+						auto &bodyM = mp.second;
+#if DEBUG_BODY_UI
+						im::BulletText( "bodyA: %d : bodyM: %d", bodyA.getId(), bodyM.getId() );
+						im::SameLine();
+#endif
+						// compare joint and if close enough, merge
+						const Joint *jointB = bodyM.getJoint( JointType::Head );
+						CI_ASSERT( (int)jointB->mConfidence >= (int)JointConfidence::Medium );
+
+						float dist = glm::distance( jointA->mPos, jointB->mPos );
+						Color col( 1, 1, 1 );
+						if( dist < mJointDistanceConsideredSame ) {
+							col = Color( 0, 1, 0 );
+						}
+#if DEBUG_BODY_UI
+						im::TextColored( col, "- dist: %0.3f", dist );
+#endif
+
+						if( dist < mJointDistanceConsideredSame ) {
+							bodyMatched = true;
+							// merge the two bodies
+							// TODO: consider storing indices + devices and doing the merge afterwards
+							bodyM.merge( bodyA );
+#if DEBUG_BODY_UI
+							im::SameLine(); im::Text( "|merged|" );
+#endif
+							break; // don't compare any other bodies from this device
+							// TODO: we might want to find the closest / best candidate body instead
+						}
+
+					}
+
+					// if we couldn't find a match from a device other than the first, add new body
+					if( ! bodyMatched ) {
+						string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
+						Body bodyCopy = bodyA;
+						bodyCopy.mId = key;
+						auto resultIt = matchedBodies.insert( { key, bodyCopy } );
+						CI_VERIFY( resultIt.second );
+#if DEBUG_BODY_UI
+						im::Indent();
+						im::BulletText( "no match, added body with id: %d", bodyA.getId() );
+						im::Unindent();
+#endif
+					}
+				}
+			}
+			else {
+				// main jointA not present
+				// TODO: disregard this bodyA as a candidate?
+
+			}
+		}
+#if DEBUG_BODY_UI
+		im::Unindent();
+#endif
+	}
+
+	mMergedBodies = matchedBodies;
+
+#if DEBUG_BODY_UI
+
+	im::Separator();
+	im::Text( "total merged bodies: %d", mMergedBodies.size() );
+
+	im::End();
+#endif
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -696,13 +845,21 @@ void CaptureManager::updateUI()
 	}
 
 	im::Checkbox( "auto start", &mAutoStart );
+	im::Checkbox( "merge multi device", &mMergeMultiDevice );
 
-	// TODO: make these checkboxes (will need to re-init networking / devices
+	// TODO: make these checkboxes (will need to re-init networking / devices)
 	im::Value( "networking enabled", mNetworkingEnabled );
 	im::Value( "sync devices", mSyncDevicesEnabled );
 
-
 	im::DragFloat( "body max distance", &mMaxBodyDistance, 0.5f, -1.0f, 10000.0f );
+
+	if( ! mMergeMultiDevice ) {
+		imx::BeginDisabled();
+	}
+	im::DragFloat( "joint dist considered same", &mJointDistanceConsideredSame, 0.02f, 0.0f, 10e6 );
+	if( ! mMergeMultiDevice ) {
+		imx::EndDisabled();
+	}
 
 	float maxSeconds = (float)mMaxSecondsUntilBodyRemoved;
 	if( im::DragFloat( "body max seconds until removed", &maxSeconds, 0.001f, 0.0f, 10e6f, "%.4f" ) ) {
@@ -719,6 +876,63 @@ void CaptureManager::updateUI()
 
 	for( const auto &device : mCaptureDevices ) {
 		device->enabledUI();
+	}
+
+	if( mMergeMultiDevice && im::CollapsingHeader( ( "Merged Bodies (" + to_string( mMergedBodies.size() ) + ")###MergedBodies" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		double currentTime = getCurrentTime();
+
+		for( const auto &mb : mMergedBodies ) {
+			const auto &body = mb.second;
+			//auto bodyColor = getDebugBodyColor( stoi( body.mId ) ); // this only works for a body id = index number
+			vec3 bodyColor = { 1, 0.5f, 0 };
+			im::PushStyleColor( ImGuiCol_Text, Color( bodyColor.x, bodyColor.y, bodyColor.z ) );
+
+			if( im::TreeNodeEx( ( "body " + body.mId ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
+				im::PopStyleColor();
+				im::ScopedId idScope( body.mId.c_str() );
+				im::Text( "time tracked: %0.3f", float( currentTime - body.mTimeFirstTracked ) );
+				im::Text( "time since last tracked: %0.3f", float( currentTime - body.mTimeLastTracked ) );
+				im::Text( "center joint type: %s", jointTypeAsString( body.getCenterJointType() ) );
+
+				if( im::TreeNodeEx( "joints" ) ) {
+					for( const auto &jt : body.getJoints() ) {
+						const auto &joint = jt.second;
+
+						ColorA col = im::GetStyleColorVec4( ImGuiCol_Text );
+						if( joint.mConfidence == JointConfidence::Medium ) {
+							//col = Color( 0, 1, 0.2f );
+						}
+						if( joint.mConfidence == JointConfidence::Low ) {
+							col *= 0.75f;
+						}
+						else if( joint.mConfidence == JointConfidence::None ) {
+							col = ColorA( 0.6f, 0.2f, 0.2f );
+						}
+						im::PushStyleColor( ImGuiCol_Text, col );
+
+						im::Text( "%13s: confidence: %d,", joint.getTypeAsString(), (int)joint.mConfidence );
+						im::SameLine();
+						im::Text( "pos: [%+3.1f, %+3.1f, %+3.1f], vel: [%+4.2f, %+4.2f, %+4.2f], speed: %.2f",
+							joint.mPos.x, joint.mPos.y, joint.mPos.z,
+							joint.mVelocity.x, joint.mVelocity.y, joint.mVelocity.z,
+							glm::length( joint.mVelocity )
+						);
+
+						if( joint.mType == JointType::Head ) {
+							vec3 rotEuler = glm::degrees( glm::eulerAngles( joint.mOrientation ) );
+							im::Text( "\t\t\t- orientation: [%+3.2f, %+3.2f, %+3.2f]", rotEuler.x, rotEuler.y, rotEuler.z );
+						}
+
+						im::PopStyleColor();
+					}
+					im::TreePop(); // joints
+				}
+				im::TreePop(); // body b
+			}
+			else {
+				im::PopStyleColor(); // treenode color
+			}
+		}
 	}
 
 	if( im::CollapsingHeader( "Networking", ImGuiTreeNodeFlags_DefaultOpen ) ) {
