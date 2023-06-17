@@ -21,7 +21,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "ck4a/CaptureManager.h"
 
-#include "mason/extra/ImGuiStuff.h"
+#include "mason/imx/ImGuiStuff.h"
 
 #include "cinder/Log.h"
 #include "cinder/osc/Osc.h"
@@ -38,6 +38,13 @@ namespace ck4a {
 namespace {
 
 bool sLogNetworkVerbose = false;
+
+void appendToMessage( osc::Message &msg, const vec3 &v )
+{
+	msg.append( v.x );
+	msg.append( v.y );
+	msg.append( v.z );
+}
 
 } // anon
 
@@ -86,9 +93,7 @@ void CaptureManager::init( const ma::Info& info )
 	}
 	else {
 		CI_LOG_I( "networking disabled" );
-		// TODO: error reporting
 	}
-
 
 	auto devices = info.get<vector<ma::Info>>( "devices" );
 	bool haveSyncMaster = false;
@@ -413,12 +418,6 @@ void CaptureManager::initOSCListeners()
 
 	mOSCReceiver->removeAllListeners();
 
-	//mOSCReceiver->setListener( "/test/message",
-	//	[&]( const osc::Message &msg ) {
-	//		CI_LOG_I( "/test/message: " << msg );
-	//	}
-	//);
-
 #if 0
 	mOSCReceiver->setListener( "*", 
 		[&]( const osc::Message &msg ) {
@@ -439,13 +438,12 @@ void CaptureManager::initOSCListeners()
 			}
 		);
 
-		// TODO NEXT: figure out to what extent I can parse this data
-		mOSCReceiver->setListener( "/capture/device/*",
+		mOSCReceiver->setListener( "/capture/body",
 			[this]( const osc::Message &msg ) {
-				CI_LOG_I( "received message: " << msg );
+				LOG_NETWORK_V( "received body message (size: " << msg.getPacketSize() << " bytes): " << msg );
+				receiveBody( msg );
 			}
 		);
-
 	}
 }
 
@@ -480,8 +478,6 @@ void CaptureManager::sendTestValue()
 	sendMessage( msg );
 }
 
-#define DEBUG_OSC_MESSAGES 0
-
 void CaptureManager::sendMessage( const osc::Message &msg )
 {
 	if( ! mOSCSender ) {
@@ -490,12 +486,6 @@ void CaptureManager::sendMessage( const osc::Message &msg )
 	}
 
 	lock_guard<mutex> lock( mMutexSender );
-
-#if DEBUG_OSC_MESSAGES
-	// FIXME: figure out why this msg print isn't working
-	CI_LOG_I( "time: " << getCurrentTime() << "] sending message:\n" << msg );
-	//CI_LOG_I( "\t- arg 0: " << msg.getArg<float>( 0 ) );
-#endif
 
 	mOSCSender->send( msg,
 		[]( asio::error_code error ) {
@@ -507,43 +497,115 @@ void CaptureManager::sendMessage( const osc::Message &msg )
 	);
 }
 
-void appendToMessage( osc::Message &msg, const vec3 &v )
-{
-	msg.append( v.x );
-	msg.append( v.y );
-	msg.append( v.z );
+namespace {
+//! Body type that gets sent over OSC as a Blob (void *)
+
+struct JointBlob {
+	int type = 1000; // JointType::Unknown
+	vec3 pos;
+	vec3 vel;
+	int confidence = 0;
+	quat orientation;
+	double timeFirstTracked = -1;
+};
+
 }
 
 // note: called from Capture process thread
-// TODO: try sending as a bundle
+// sends message with args:
+// 0: timestamp (NTP)
+// 1: device id str
+// 2: body id str
+// 3: is active
+// 4: num joints
+// 5: joints blob
 void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 {
 	// master host doesn't need to send bodies, it will collect them all
-	// TODO: enable this - for now I'm sending bodies across to all hosts
-	//if( mMasterHost ) {
-	//	return;
-	//}
+	if( mMasterHost ) {
+		return;
+	}
 
-	// capture/device/{deviceId}
-	// send body over the wire
+	if( ! mOSCSender ) {
+		LOG_NETWORK_V( "Error: null OSC Sender" );
+		return;
+	}
 
-	string bodyAddress = "/capture/device/" + device->getId() + "/body/" + body.getId();
-
-	osc::Message msg( bodyAddress );
+	osc::Message msg( "/capture/body" );
+	msg.appendCurrentTime();
+	msg.append( device->getId() );
+	msg.append( body.getId() );
 	msg.append( body.isActive() );
+	msg.append( (int32_t)body.getJoints().size() );
 
-	sendMessage( msg );
-
-	// first: joint by joint
-	// joint addresses: .../body/{bodyId}/joints/{jointId}
+	// pack joints in a Blob
+	vector<JointBlob> joints;
 	for( const auto &jp : body.getJoints() ) {
 		const auto &joint = jp.second;
 
-		osc::Message msg( bodyAddress + "/joints/" + to_string( (int)jp.first ) );
-		appendToMessage( msg, joint.mPos );
-		sendMessage( msg );
+		JointBlob b;
+		b.type = (int)joint.mType;
+		b.pos = joint.mPos;
+		b.vel = joint.mVelocity;
+		b.confidence = (int)joint.mConfidence;
+		b.orientation = joint.mOrientation;
+		b.timeFirstTracked = joint.mTimeFirstTracked;
+
+		joints.push_back( b );
 	}
 
+	msg.appendBlob( joints.data(), uint32_t( joints.size() * sizeof( JointBlob ) ) );
+
+	LOG_NETWORK_V( "sending body message for body with id: " << body.getId() << ", num joints: " << joints.size() << ", packet size: " << msg.getPacketSize() << " bytes." );
+	sendMessage( msg );
+}
+
+void CaptureManager::receiveBody( const osc::Message &msg )
+{
+	// only master receives bodies
+	if( ! mMasterHost ) {
+		return;
+	}
+
+	uint32_t argIndex = 0;
+
+	// TODO: store this on body.mTimeLastTracked in correct units. May want to use our own time / clock for simplicity
+	auto timestamp = msg.getArgTime( argIndex++ );
+
+	string deviceId = msg.getArgString( argIndex++ );
+	auto device = getDevice( deviceId );
+	if( ! device ) {
+		CI_LOG_E( "recieved a body with unknown device id: " << deviceId );
+		return;
+	}
+
+	Body body;
+	body.mId = msg.getArgString( argIndex++ );
+	body.mActive = msg.getArgBool( argIndex++ );
+	body.mTimeLastTracked = getCurrentTime();
+
+	int32_t numJoints = msg.getArgInt32( argIndex++ );
+	auto jointsBuffer = msg.getArgBlob( argIndex++ );
+	CI_ASSERT( jointsBuffer.getSize() == sizeof(JointBlob) * numJoints );
+
+	auto joints = (JointBlob *)jointsBuffer.getData();
+	for( int i = 0; i < numJoints; i++ ) {
+		auto jointBlob = joints[i];
+
+		Joint joint;
+		joint.mType = (JointType)jointBlob.type;
+		joint.mPos = jointBlob.pos;
+		joint.mVelocity = jointBlob.vel;
+		joint.mConfidence = (JointConfidence)jointBlob.confidence;
+		joint.mOrientation = jointBlob.orientation;
+		joint.mTimeFirstTracked = jointBlob.timeFirstTracked;
+
+		body.mJoints[joint.mType] = joint;
+	}
+
+	LOG_NETWORK_V( "\t- inserting body with device id: " << deviceId << ", bodyId: " << body.mId << ", num joints: " << body.mJoints.size() );
+
+	device->insertBody( body );
 }
 
 void CaptureManager::onLocalDeviceStatusChanged( CaptureDevice *device )

@@ -109,7 +109,8 @@ private:
 	void sendTestMessage();
 	void sendTestValue();
 	void sendMessage( const ci::osc::Message &msg );
-	
+	void receiveBody( const ci::osc::Message &msg );
+
 	struct Host {
 		std::string mId;
 		bool mMaster = false;
@@ -127,7 +128,7 @@ private:
 	bool    mNetworkingEnabled = true;
 	bool    mPaused = false; //! If true, will leave devices open but data will not be updated (for development)
 	bool	mUIEnabled = true;
-	bool    mSyncDevicesEnabled = true;
+	bool    mSyncDevicesEnabled = false;
 	double	mMaxSecondsUntilBodyRemoved = 0.1f;
 	float	mMaxBodyDistance = 250;
 	double  mHeartbeatSeconds = 2;

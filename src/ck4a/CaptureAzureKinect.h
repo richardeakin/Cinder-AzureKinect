@@ -78,6 +78,7 @@ public:
 	// Thread-safe data access
 
 	std::vector<Body> getBodies() const;
+	void insertBody( const Body &body );
 	// ------------------------------------
 
 
@@ -115,8 +116,9 @@ private:
 
 	ci::Surface8u			mColorSurface;
 	ci::Channel16u			mDepthChannel;
+	ci::Channel8u			mBodyIndexMapChannel;
 	ci::Surface32f			mTableDepth2d3dSurface;
-	ci::gl::TextureRef		mColorTexture, mDepthTexture, mTableDepth2d3dTexture;
+	ci::gl::TextureRef		mColorTexture, mDepthTexture, mTableDepth2d3dTexture, mBodyIndexMapTexture;
 
 	std::map<std::string,Body>	mBodies; //! key: body id
 
@@ -126,6 +128,7 @@ private:
 	bool			mDepthEnabled = true;			//! if depth buffer is enabled
 	bool			mColorEnabled = false;			//! if color buffer is enabled
 	bool			mBodyTrackingEnabled = true;	//! if body tracking is enabled
+	bool			mBodyIndexMapEnabled = false;	//! if the body index map is extracted
 	bool            mSyncMaster = false;
 	vec3			mPos;
 	quat			mOrientation;
