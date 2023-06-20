@@ -1251,7 +1251,7 @@ void CaptureAzureKinect::update()
 					}
 				}
 			}
-			else if( mData->mDevice ) {
+			else if( mData->mDevice && mPlaybackStatus == PlaybackStatus::Ready ) {
 				if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) == K4A_RESULT_SUCCEEDED ) {
 					mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
 					mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
