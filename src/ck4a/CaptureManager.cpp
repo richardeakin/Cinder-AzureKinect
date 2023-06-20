@@ -124,7 +124,7 @@ void CaptureManager::init( const ma::Info& info )
 	if( mAutoStart ) {
 		CI_LOG_I( "starting all devices marked enabled.." );
 		for( const auto device : mCaptureDevices ) {
-			if( device->isEnabled() ) {
+			if( device->isEnabled() && ! device->isRemote() ) {
 				device->start();
 			}
 		}
