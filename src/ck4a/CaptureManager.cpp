@@ -22,6 +22,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "ck4a/CaptureManager.h"
 
 #include "mason/imx/ImGuiStuff.h"
+#include "mason/Profiling.h"
 
 #include "cinder/Log.h"
 #include "cinder/osc/Osc.h"
@@ -326,6 +327,8 @@ string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId 
 
 void CaptureManager::mergeBodies()
 {
+	CI_PROFILE_CPU( "CaptureManager::mergeBodies" );
+
 	mMergeResolveJoints = {
 		JointType::Head,
 	};
