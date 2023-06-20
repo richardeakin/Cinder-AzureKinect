@@ -289,6 +289,11 @@ void CaptureManager::keyDown( app::KeyEvent &event )
 		setPaused( ! isPaused() );
 		CI_LOG_I( "paused: " << isPaused() );
 	}
+	else {
+		handled = false;
+	}
+
+	event.setHandled( handled );
 }
 
 void CaptureManager::update()
