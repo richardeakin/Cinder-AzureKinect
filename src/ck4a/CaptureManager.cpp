@@ -22,6 +22,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "ck4a/CaptureManager.h"
 
 #include "mason/imx/ImGuiStuff.h"
+#include "mason/Profiling.h"
 
 #include "cinder/Log.h"
 #include "cinder/osc/Osc.h"
@@ -38,6 +39,13 @@ namespace ck4a {
 namespace {
 
 bool sLogNetworkVerbose = false;
+
+void appendToMessage( osc::Message &msg, const vec3 &v )
+{
+	msg.append( v.x );
+	msg.append( v.y );
+	msg.append( v.z );
+}
 
 } // anon
 
@@ -59,6 +67,8 @@ void CaptureManager::init( const ma::Info& info )
 	mSyncDevicesEnabled = info.get( "syncDevices", mSyncDevicesEnabled );
 	mMaxSecondsUntilBodyRemoved = info.get( "maxSecondsUntilBodyRemoved", mMaxSecondsUntilBodyRemoved );
 	mMaxBodyDistance = info.get( "maxBodyDistance", mMaxBodyDistance );
+	mMergeMultiDevice = info.get( "mergeMultiDevice", mMergeMultiDevice );
+	mJointDistanceConsideredSame = info.get( "jointMatchMaxDistance", mJointDistanceConsideredSame );
 
 	// parse hosts
 	mNetworkingEnabled = info.get<bool>( "networkingEnabled", mNetworkingEnabled );
@@ -86,9 +96,7 @@ void CaptureManager::init( const ma::Info& info )
 	}
 	else {
 		CI_LOG_I( "networking disabled" );
-		// TODO: error reporting
 	}
-
 
 	auto devices = info.get<vector<ma::Info>>( "devices" );
 	bool haveSyncMaster = false;
@@ -117,7 +125,7 @@ void CaptureManager::init( const ma::Info& info )
 	if( mAutoStart ) {
 		CI_LOG_I( "starting all devices marked enabled.." );
 		for( const auto device : mCaptureDevices ) {
-			if( device->isEnabled() ) {
+			if( device->isEnabled() && ! device->isRemote() ) {
 				device->start();
 			}
 		}
@@ -133,6 +141,8 @@ void CaptureManager::save( ma::Info& info ) const
 	info["heartbeatSeconds"] = mHeartbeatSeconds;
 	info["maxSecondsUntilBodyRemoved"] = mMaxSecondsUntilBodyRemoved;
 	info["maxBodyDistance"] = mMaxBodyDistance;
+	info["mergeMultiDevice"] = mMergeMultiDevice;
+	info["jointMatchMaxDistance"] = mJointDistanceConsideredSame;
 
 	std::vector<ma::Info> devices;
 	for( const auto &device : mCaptureDevices ) {
@@ -280,6 +290,11 @@ void CaptureManager::keyDown( app::KeyEvent &event )
 		setPaused( ! isPaused() );
 		CI_LOG_I( "paused: " << isPaused() );
 	}
+	else {
+		handled = false;
+	}
+
+	event.setHandled( handled );
 }
 
 void CaptureManager::update()
@@ -293,6 +308,156 @@ void CaptureManager::update()
 	for( const auto &device : mCaptureDevices ) {
 		device->update();
 	}
+
+	if( mMergeMultiDevice ) {
+		mergeBodies();
+	}
+}
+
+// ----------------------------------------------------------------------------------------------------
+// Body Merging
+// ----------------------------------------------------------------------------------------------------
+
+#define DEBUG_BODY_UI 0
+
+string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId )
+{
+	return deviceId + "-" + bodyId;
+}
+
+void CaptureManager::mergeBodies()
+{
+	CI_PROFILE_CPU( "CaptureManager::mergeBodies" );
+
+	mMergeResolveJoints = {
+		JointType::Head,
+	};
+
+	// TODO: use more complete set
+	//mMergeResolveJoints = {
+	//	JointType::Head,
+	//	JointType::SpineNavel,
+	//	JointType::SpineChest,
+	//	JointType::Neck
+	//};
+
+	map<std::string, Body> matchedBodies;
+
+	// match up the bodiesA from multiple cameras
+	// - their current ids don't mean anything, will have to asign new ones
+	// - only compare bodiesA to thoe from other devices
+
+#if DEBUG_BODY_UI
+	im::Begin( "Debug Resolve Bodies" );
+#endif
+
+	for( int deviceIndex = 0; deviceIndex < getNumDevices(); deviceIndex++ ) {
+		const auto &device = mCaptureDevices[deviceIndex];
+		if( ! device->isEnabled() ) {
+			continue;
+		}
+
+		auto bodiesA = device->getBodies();
+
+#if DEBUG_BODY_UI
+		im::BulletText( "device index: %d, bodies: %d", deviceIndex , bodiesA.size() );
+		im::Indent();
+#endif
+
+		for( const auto &bodyA : bodiesA ) {
+			// TODO: for loop over mMergeResolveJoints
+			// - but could also just say if the heads are far enough apart, don't consider it all
+			//    - this effectively binning the bodies relative to their head
+			//    - or use the body's center pos
+			const Joint *jointA = bodyA.getJoint( JointType::Head );
+			// if we have the main jointA, compare it to those in matchedBodies
+			if( jointA && (int)jointA->mConfidence >= (int)JointConfidence::Medium ) {
+				// if we're on the first device, just add these bodiesA to the map
+				if( deviceIndex == 0 ) {
+					string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
+					Body bodyCopy = bodyA;
+					bodyCopy.mId = key;
+					auto resultIt = matchedBodies.insert( { key, bodyCopy } );
+					CI_VERIFY( resultIt.second );
+
+#if DEBUG_BODY_UI
+					im::BulletText( "added body with key: %s", key.c_str() );
+#endif
+				}
+				else {
+					// compare this device's bodies to those in matchedBodies
+					bool bodyMatched = false;
+					for( auto &mp : matchedBodies ) {
+						auto &bodyM = mp.second;
+#if DEBUG_BODY_UI
+						im::BulletText( "bodyA: %d : bodyM: %d", bodyA.getId(), bodyM.getId() );
+						im::SameLine();
+#endif
+						// compare joint and if close enough, merge
+						const Joint *jointB = bodyM.getJoint( JointType::Head );
+						CI_ASSERT( (int)jointB->mConfidence >= (int)JointConfidence::Medium );
+
+						float dist = glm::distance( jointA->mPos, jointB->mPos );
+						Color col( 1, 1, 1 );
+						if( dist < mJointDistanceConsideredSame ) {
+							col = Color( 0, 1, 0 );
+						}
+#if DEBUG_BODY_UI
+						im::TextColored( col, "- dist: %0.3f", dist );
+#endif
+
+						if( dist < mJointDistanceConsideredSame ) {
+							bodyMatched = true;
+							// merge the two bodies
+							// TODO: consider storing indices + devices and doing the merge afterwards
+							bodyM.merge( bodyA );
+#if DEBUG_BODY_UI
+							im::SameLine(); im::Text( "|merged|" );
+#endif
+							break; // don't compare any other bodies from this device
+							// TODO: we might want to find the closest / best candidate body instead
+						}
+
+					}
+
+					// if we couldn't find a match from a device other than the first, add new body
+					if( ! bodyMatched ) {
+						string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
+						Body bodyCopy = bodyA;
+						bodyCopy.mId = key;
+						auto resultIt = matchedBodies.insert( { key, bodyCopy } );
+						CI_VERIFY( resultIt.second );
+#if DEBUG_BODY_UI
+						im::Indent();
+						im::BulletText( "no match, added body with id: %d", bodyA.getId() );
+						im::Unindent();
+#endif
+					}
+				}
+			}
+			else {
+				// main jointA not present
+				// TODO: disregard this bodyA as a candidate?
+
+			}
+		}
+#if DEBUG_BODY_UI
+		im::Unindent();
+#endif
+	}
+
+	mMergedBodies.clear();
+	for( const auto &mp : matchedBodies ) {
+		mMergedBodies.push_back( mp.second );
+	}
+
+#if DEBUG_BODY_UI
+
+	im::Separator();
+	im::Text( "total merged bodies: %d", mMergedBodies.size() );
+
+	im::End();
+#endif
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -413,12 +578,6 @@ void CaptureManager::initOSCListeners()
 
 	mOSCReceiver->removeAllListeners();
 
-	//mOSCReceiver->setListener( "/test/message",
-	//	[&]( const osc::Message &msg ) {
-	//		CI_LOG_I( "/test/message: " << msg );
-	//	}
-	//);
-
 #if 0
 	mOSCReceiver->setListener( "*", 
 		[&]( const osc::Message &msg ) {
@@ -439,13 +598,12 @@ void CaptureManager::initOSCListeners()
 			}
 		);
 
-		// TODO NEXT: figure out to what extent I can parse this data
-		mOSCReceiver->setListener( "/capture/device/*",
+		mOSCReceiver->setListener( "/capture/body",
 			[this]( const osc::Message &msg ) {
-				CI_LOG_I( "received message: " << msg );
+				LOG_NETWORK_V( "received body message (size: " << msg.getPacketSize() << " bytes): " << msg );
+				receiveBody( msg );
 			}
 		);
-
 	}
 }
 
@@ -480,8 +638,6 @@ void CaptureManager::sendTestValue()
 	sendMessage( msg );
 }
 
-#define DEBUG_OSC_MESSAGES 0
-
 void CaptureManager::sendMessage( const osc::Message &msg )
 {
 	if( ! mOSCSender ) {
@@ -490,12 +646,6 @@ void CaptureManager::sendMessage( const osc::Message &msg )
 	}
 
 	lock_guard<mutex> lock( mMutexSender );
-
-#if DEBUG_OSC_MESSAGES
-	// FIXME: figure out why this msg print isn't working
-	CI_LOG_I( "time: " << getCurrentTime() << "] sending message:\n" << msg );
-	//CI_LOG_I( "\t- arg 0: " << msg.getArg<float>( 0 ) );
-#endif
 
 	mOSCSender->send( msg,
 		[]( asio::error_code error ) {
@@ -507,15 +657,28 @@ void CaptureManager::sendMessage( const osc::Message &msg )
 	);
 }
 
-void appendToMessage( osc::Message &msg, const vec3 &v )
-{
-	msg.append( v.x );
-	msg.append( v.y );
-	msg.append( v.z );
+namespace {
+//! Body type that gets sent over OSC as a Blob (void *)
+
+struct JointBlob {
+	int type = 1000; // JointType::Unknown
+	vec3 pos;
+	vec3 vel;
+	int confidence = 0;
+	quat orientation;
+	double timeFirstTracked = -1;
+};
+
 }
 
 // note: called from Capture process thread
-// TODO: try sending as a bundle
+// sends message with args:
+// 0: timestamp (NTP)
+// 1: device id str
+// 2: body id str
+// 3: is active
+// 4: num joints
+// 5: joints blob
 void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 {
 	// master host doesn't need to send bodies, it will collect them all
@@ -523,26 +686,86 @@ void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 		return;
 	}
 
-	// capture/device/{deviceId}
-	// send body over the wire
+	if( ! mOSCSender ) {
+		LOG_NETWORK_V( "Error: null OSC Sender" );
+		return;
+	}
 
-	string bodyAddress = "/capture/device/" + device->getId() + "/body/" + body.getId();
-
-	osc::Message msg( bodyAddress );
+	osc::Message msg( "/capture/body" );
+	msg.appendCurrentTime();
+	msg.append( device->getId() );
+	msg.append( body.getId() );
 	msg.append( body.isActive() );
+	msg.append( (int32_t)body.getJoints().size() );
 
-	sendMessage( msg );
-
-	// first: joint by joint
-	// joint addresses: .../body/{bodyId}/joints/{jointId}
+	// pack joints in a Blob
+	vector<JointBlob> joints;
 	for( const auto &jp : body.getJoints() ) {
 		const auto &joint = jp.second;
 
-		osc::Message msg( bodyAddress + "/joints/" + to_string( (int)jp.first ) );
-		appendToMessage( msg, joint.mPos );
-		sendMessage( msg );
+		JointBlob b;
+		b.type = (int)joint.mType;
+		b.pos = joint.mPos;
+		b.vel = joint.mVelocity;
+		b.confidence = (int)joint.mConfidence;
+		b.orientation = joint.mOrientation;
+		b.timeFirstTracked = joint.mTimeFirstTracked;
+
+		joints.push_back( b );
 	}
 
+	msg.appendBlob( joints.data(), uint32_t( joints.size() * sizeof( JointBlob ) ) );
+
+	LOG_NETWORK_V( "sending body message for body with id: " << body.getId() << ", num joints: " << joints.size() << ", packet size: " << msg.getPacketSize() << " bytes." );
+	sendMessage( msg );
+}
+
+void CaptureManager::receiveBody( const osc::Message &msg )
+{
+	// only master receives bodies
+	if( ! mMasterHost ) {
+		return;
+	}
+
+	uint32_t argIndex = 0;
+
+	// TODO: store this on body.mTimeLastTracked in correct units. May want to use our own time / clock for simplicity
+	auto timestamp = msg.getArgTime( argIndex++ );
+
+	string deviceId = msg.getArgString( argIndex++ );
+	auto device = getDevice( deviceId );
+	if( ! device ) {
+		CI_LOG_E( "recieved a body with unknown device id: " << deviceId );
+		return;
+	}
+
+	Body body;
+	body.mId = msg.getArgString( argIndex++ );
+	body.mActive = msg.getArgBool( argIndex++ );
+	body.mTimeLastTracked = getCurrentTime();
+
+	int32_t numJoints = msg.getArgInt32( argIndex++ );
+	auto jointsBuffer = msg.getArgBlob( argIndex++ );
+	CI_ASSERT( jointsBuffer.getSize() == sizeof(JointBlob) * numJoints );
+
+	auto joints = (JointBlob *)jointsBuffer.getData();
+	for( int i = 0; i < numJoints; i++ ) {
+		auto jointBlob = joints[i];
+
+		Joint joint;
+		joint.mType = (JointType)jointBlob.type;
+		joint.mPos = jointBlob.pos;
+		joint.mVelocity = jointBlob.vel;
+		joint.mConfidence = (JointConfidence)jointBlob.confidence;
+		joint.mOrientation = jointBlob.orientation;
+		joint.mTimeFirstTracked = jointBlob.timeFirstTracked;
+
+		body.mJoints[joint.mType] = joint;
+	}
+
+	LOG_NETWORK_V( "\t- inserting body with device id: " << deviceId << ", bodyId: " << body.mId << ", num joints: " << body.mJoints.size() );
+
+	device->insertBody( body );
 }
 
 void CaptureManager::onLocalDeviceStatusChanged( CaptureDevice *device )
@@ -633,13 +856,21 @@ void CaptureManager::updateUI()
 	}
 
 	im::Checkbox( "auto start", &mAutoStart );
+	im::Checkbox( "merge multi device", &mMergeMultiDevice );
 
-	// TODO: make these checkboxes (will need to re-init networking / devices
+	// TODO: make these checkboxes (will need to re-init networking / devices)
 	im::Value( "networking enabled", mNetworkingEnabled );
 	im::Value( "sync devices", mSyncDevicesEnabled );
 
-
 	im::DragFloat( "body max distance", &mMaxBodyDistance, 0.5f, -1.0f, 10000.0f );
+
+	if( ! mMergeMultiDevice ) {
+		imx::BeginDisabled();
+	}
+	im::DragFloat( "joint dist considered same", &mJointDistanceConsideredSame, 0.02f, 0.0f, 10e6 );
+	if( ! mMergeMultiDevice ) {
+		imx::EndDisabled();
+	}
 
 	float maxSeconds = (float)mMaxSecondsUntilBodyRemoved;
 	if( im::DragFloat( "body max seconds until removed", &maxSeconds, 0.001f, 0.0f, 10e6f, "%.4f" ) ) {
@@ -656,6 +887,62 @@ void CaptureManager::updateUI()
 
 	for( const auto &device : mCaptureDevices ) {
 		device->enabledUI();
+	}
+
+	if( mMergeMultiDevice && im::CollapsingHeader( ( "Merged Bodies (" + to_string( mMergedBodies.size() ) + ")###MergedBodies" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		double currentTime = getCurrentTime();
+
+		for( const auto &body : mMergedBodies ) {
+			//auto bodyColor = getDebugBodyColor( stoi( body.mId ) ); // this only works for a body id = index number
+			vec3 bodyColor = { 1, 0.5f, 0 };
+			im::PushStyleColor( ImGuiCol_Text, Color( bodyColor.x, bodyColor.y, bodyColor.z ) );
+
+			if( im::TreeNodeEx( ( "body " + body.mId ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
+				im::PopStyleColor();
+				im::ScopedId idScope( body.mId.c_str() );
+				im::Text( "time tracked: %0.3f", float( currentTime - body.mTimeFirstTracked ) );
+				im::Text( "time since last tracked: %0.3f", float( currentTime - body.mTimeLastTracked ) );
+				im::Text( "center joint type: %s", jointTypeAsString( body.getCenterJointType() ) );
+
+				if( im::TreeNodeEx( "joints" ) ) {
+					for( const auto &jt : body.getJoints() ) {
+						const auto &joint = jt.second;
+
+						ColorA col = im::GetStyleColorVec4( ImGuiCol_Text );
+						if( joint.mConfidence == JointConfidence::Medium ) {
+							//col = Color( 0, 1, 0.2f );
+						}
+						if( joint.mConfidence == JointConfidence::Low ) {
+							col *= 0.75f;
+						}
+						else if( joint.mConfidence == JointConfidence::None ) {
+							col = ColorA( 0.6f, 0.2f, 0.2f );
+						}
+						im::PushStyleColor( ImGuiCol_Text, col );
+
+						im::Text( "%13s: confidence: %d,", joint.getTypeAsString(), (int)joint.mConfidence );
+						im::SameLine();
+						im::Text( "pos: [%+3.1f, %+3.1f, %+3.1f], vel: [%+4.2f, %+4.2f, %+4.2f], speed: %.2f",
+							joint.mPos.x, joint.mPos.y, joint.mPos.z,
+							joint.mVelocity.x, joint.mVelocity.y, joint.mVelocity.z,
+							glm::length( joint.mVelocity )
+						);
+
+						if( joint.mType == JointType::Head ) {
+							vec3 rotEuler = glm::degrees( glm::eulerAngles( joint.mOrientation ) );
+							im::Text( "\t\t\t- orientation: [%+3.2f, %+3.2f, %+3.2f]", rotEuler.x, rotEuler.y, rotEuler.z );
+						}
+
+						im::PopStyleColor();
+					}
+					im::TreePop(); // joints
+				}
+				im::TreePop(); // body b
+			}
+			else {
+				im::PopStyleColor(); // treenode color
+			}
+		}
 	}
 
 	if( im::CollapsingHeader( "Networking", ImGuiTreeNodeFlags_DefaultOpen ) ) {
