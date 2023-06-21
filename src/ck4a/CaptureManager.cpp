@@ -446,7 +446,10 @@ void CaptureManager::mergeBodies()
 #endif
 	}
 
-	mMergedBodies = matchedBodies;
+	mMergedBodies.clear();
+	for( const auto &mp : matchedBodies ) {
+		mMergedBodies.push_back( mp.second );
+	}
 
 #if DEBUG_BODY_UI
 
@@ -889,8 +892,7 @@ void CaptureManager::updateUI()
 	if( mMergeMultiDevice && im::CollapsingHeader( ( "Merged Bodies (" + to_string( mMergedBodies.size() ) + ")###MergedBodies" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		double currentTime = getCurrentTime();
 
-		for( const auto &mb : mMergedBodies ) {
-			const auto &body = mb.second;
+		for( const auto &body : mMergedBodies ) {
 			//auto bodyColor = getDebugBodyColor( stoi( body.mId ) ); // this only works for a body id = index number
 			vec3 bodyColor = { 1, 0.5f, 0 };
 			im::PushStyleColor( ImGuiCol_Text, Color( bodyColor.x, bodyColor.y, bodyColor.z ) );

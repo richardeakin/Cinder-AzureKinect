@@ -99,7 +99,10 @@ public:
 
 	void sendBodyTracked( const CaptureDevice *device, Body body );
 
-	const std::map<std::string, Body>& getMergedBodies() const	{ return mMergedBodies; }
+	//! Returns where the bodies from multiple devices will be merged each update.
+	bool isMergeMultiDeviceEnabled() const { return mMergeMultiDevice; }
+	//! Returns the merged bodies
+	const std::vector<Body>& getMergedBodies() const	{ return mMergedBodies; }
 
 private:
 	// non-copyable
@@ -141,7 +144,7 @@ private:
 	double  mHeartbeatSeconds = 2;
 	bool    mVerboseLogging = false;
 
-	std::map<std::string, Body>	mMergedBodies;
+	std::vector<Body>			mMergedBodies;
 	std::set<JointType>			mMergeResolveJoints;
 
 	std::vector<CaptureAzureKinectRef>		mCaptureDevices;
