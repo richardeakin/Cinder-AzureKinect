@@ -997,10 +997,10 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 
 		joint.mPos = toVec3( jointKinect.position );	
 		joint.mPos /= 10; // k4a uses millimeters for 3D joint positions, we use centimeters
-		joint.mPos = vec3( vec4( joint.mPos, 1 ) * mOrientation ); // rotate relative to room
+		//joint.mPos = vec3( vec4( joint.mPos, 1 ) * mOrientation ); // rotate relative to room
 
 		joint.mPos *= vec3( -1, -1, 1 ); // flip x and y axes
-		joint.mPos += mPos; // translate relative to room
+		//joint.mPos += mPos; // translate relative to room
 
 		// joint orientation:
 		// - start with an orientation to go from kinect camera -> opengl
