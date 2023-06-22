@@ -28,6 +28,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "mason/imx/ImGuiStuff.h"
 #include "mason/imx/ImGuiTexture.h"
+#include "mason/Profiling.h"
 #include "imguix/ImGuiFilePicker.h"
 #include "cinder/Breakpoint.h"
 #include "cinder/Log.h"
@@ -1154,6 +1155,7 @@ ci::Channel16u CaptureAzureKinect::getDepthChannelCloned() const
 
 void CaptureAzureKinect::update()
 {
+	CI_PROFILE_CPU( string( "CaptureAzureKinect::update (" + mId + ")" ) );
 	double currentTime = getManager()->getCurrentTime();
 
 	// TODO: move this to CaptureManager, and use current Status
