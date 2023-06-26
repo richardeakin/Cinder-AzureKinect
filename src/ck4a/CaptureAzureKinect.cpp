@@ -507,7 +507,7 @@ void CaptureAzureKinect::save( ma::Info &info ) const
 	info["bodyTracking"] = mBodyTrackingEnabled;
 	info["debugColor"] = mDebugColor;
 	info["pos"] = mPos;
-	info["orientation"] = mOrientation;
+	info.set<quat>( "orientation", mOrientation );
 
 	if( ! mSerialNumber.empty() ) {
 		info["serial"] = mSerialNumber;
