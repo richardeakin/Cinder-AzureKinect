@@ -63,7 +63,16 @@ public:
 	ci::gl::TextureRef	getColorTexture() const				{ return mColorTexture; }
 	ci::gl::TextureRef	getDepthTexture() const				{ return mDepthTexture; }
 	ci::gl::TextureRef	getTableDepth2d3dTexture() const	{ return mTableDepth2d3dTexture; }
-	
+
+	//! Returns true if depth buffer is enabled
+	bool		isDepthEnabled() const	{ return mDepthEnabled; }
+	//! Returns the size of depth buffer, [0,0] if disabled
+	ci::ivec2	getDepthSize() const;
+	//! Returns the clip planes (in centimeters) for the depth buffer, [0,0] if disabled
+	ci::vec2	getDepthClipPlanes() const;
+	//! Returns vertical FOV of the d buffer, 0 if disabled
+	float		getDepthFov() const;
+
 	void openRecording( const ci::fs::path &filePath );
 
 	const ci::Color& getDebugColor() const	{ return mDebugColor; }

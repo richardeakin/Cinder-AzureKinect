@@ -60,6 +60,7 @@ const k4a_depth_mode_t DEPTH_MODE = K4A_DEPTH_MODE_WFOV_2X2BINNED;
 // Allowing at least 160 microseconds between depth cameras should ensure they do not interfere with one another.
 constexpr uint32_t MIN_TIME_BETWEEN_DEPTH_CAMERA_PICTURES_USEC = 160;
 
+float mDebugDepthCalibrationDepthFov = 0.0f; // TODO: why is this 1.74 for `K4A_DEPTH_MODE_NFOV_UNBINNED`
 
 // taken from k4a::device::get_serialnum()
 string getSerialNumberAsString( k4a_device_t deviceHandle )
@@ -160,6 +161,38 @@ const char* depthModeToString( k4a_depth_mode_t mode )
 	}
 
 	return "(unknown)";
+}
+
+// https://learn.microsoft.com/en-us/azure/Kinect-dk/hardware-specification
+// Returns Meters
+ci::vec2 depthClipPlanesForMode( k4a_depth_mode_t mode )
+{
+	switch( mode ) {
+		case K4A_DEPTH_MODE_OFF:			return { 0, 0 };
+		case K4A_DEPTH_MODE_NFOV_2X2BINNED:	return { 0.5f, 5.46f };
+		case K4A_DEPTH_MODE_NFOV_UNBINNED:	return { 0.5f, 3.86f };
+		case K4A_DEPTH_MODE_WFOV_2X2BINNED:	return { 0.25f, 2.88f };
+		case K4A_DEPTH_MODE_WFOV_UNBINNED:	return { 0.25f, 2.21f };
+		case K4A_DEPTH_MODE_PASSIVE_IR:		return { 0, 0 };
+		default: CI_ASSERT_NOT_REACHABLE();
+	}
+
+	return { 0, 0 };
+}
+
+float depthFovVertical( k4a_depth_mode_t mode )
+{
+	switch( mode ) {
+		case K4A_DEPTH_MODE_OFF:			return 0;
+		case K4A_DEPTH_MODE_NFOV_2X2BINNED:	return 65;
+		case K4A_DEPTH_MODE_NFOV_UNBINNED:	return 65;
+		case K4A_DEPTH_MODE_WFOV_2X2BINNED:	return 120;
+		case K4A_DEPTH_MODE_WFOV_UNBINNED:	return 120;
+		case K4A_DEPTH_MODE_PASSIVE_IR:		return 0;
+		default: CI_ASSERT_NOT_REACHABLE();
+	}
+
+	return 0;
 }
 
 const char* cameraFpsToString( k4a_fps_t fps )
@@ -1153,6 +1186,30 @@ ci::Channel16u CaptureAzureKinect::getDepthChannelCloned() const
 	return mDepthChannel.clone( true );
 }
 
+ci::ivec2 CaptureAzureKinect::getDepthSize() const
+{
+	return isDepthEnabled() ? mDepthChannel.getSize() : ivec2( 0, 0 );
+}
+
+// TODO: getDepthClipPlanes() and Fov() should use the one set from config, convert enum types
+// - because otherwise FOV and clip planes aren't available until the camera is running
+
+ci::vec2 CaptureAzureKinect::getDepthClipPlanes() const
+{
+	if( isDepthEnabled() && isRunning() ) {
+		vec2 clipMeters = depthClipPlanesForMode( mData->mDeviceConfig.depth_mode );
+		return clipMeters * 100.0f; // meters -> cm
+	}
+	else {
+		return { 0, 0 };
+	}
+}
+
+float CaptureAzureKinect::getDepthFov() const
+{
+	return ( isDepthEnabled() && isRunning() ) ? depthFovVertical( mData->mDeviceConfig.depth_mode ) : 0;
+}
+
 void CaptureAzureKinect::update()
 {
 	CI_PROFILE_CPU( string( "CaptureAzureKinect::update (" + mId + ")" ) );
@@ -1257,6 +1314,8 @@ void CaptureAzureKinect::update()
 				if( k4a_device_get_calibration( mData->mDevice, mData->mDeviceConfig.depth_mode, mData->mDeviceConfig.color_resolution, &calibration ) == K4A_RESULT_SUCCEEDED ) {
 					mTableDepth2d3dSurface = makeTableDepth2dTo3d( calibration );
 					mTableDepth2d3dTexture = gl::Texture::create( mTableDepth2d3dSurface, format );
+
+					mDebugDepthCalibrationDepthFov = calibration.depth_camera_calibration.metric_radius;
 				}
 				else {
 					CI_LOG_E( "failed to read device calibration for device with id: " << mId );
@@ -1296,6 +1355,11 @@ void CaptureAzureKinect::updateUI()
 			bool syncInConnected, syncOutConnected;
 			k4a_result_t result = k4a_device_get_sync_jack( mData->mDevice, &syncInConnected, &syncOutConnected );
 			im::Text( "sync in: %d, sync out: %d, master: %d", syncInConnected, syncOutConnected, mSyncMaster );
+
+			if( mDepthEnabled ) {
+				im::Text( "depth size: [%d, %d], clip planes: [%0.2f, %0.2f], fov (v): %0.2f", getDepthSize().x, getDepthSize().y, getDepthClipPlanes().x, getDepthClipPlanes().y, getDepthFov() );
+			}
+			im::Text( "depth fov (from calibration): %0.02f", mDebugDepthCalibrationDepthFov );
 
 			if( ImGui::TreeNode( "Device configuration" ) ) {
 				const auto &config = mData->mDeviceConfig;
