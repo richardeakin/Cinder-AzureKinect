@@ -1042,11 +1042,13 @@ void CaptureManager::updateUI()
 	im::End();
 }
 
-void CaptureManager::enabledUI()
+void CaptureManager::enabledUI( float nameOffset )
 {
 	im::ScopedId idScope( "ck4a::CaptureManager" );
 
-	im::Checkbox( "CaptureManager", &mEnabled ); im::SameLine();
+	im::Checkbox( "CaptureManager", &mEnabled );
+	im::SameLine();
+	im::SetCursorPosX( nameOffset );
 	im::Checkbox( "ui", &mUIEnabled );
 }
 

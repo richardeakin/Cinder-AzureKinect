@@ -78,7 +78,7 @@ public:
 	//! if enabled, will draw this capture device's UI to a separate window
 	void updateUI();
 	//! elements within CaptureManager's UI
-	void enabledUI();
+	void enabledUI( float nameOffset = 140 );
 
 	CaptureAzureKinectRef getDevice( const std::string &deviceId ) const;
 
