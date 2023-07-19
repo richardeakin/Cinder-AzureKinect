@@ -102,6 +102,7 @@ void CaptureManager::init( const ma::Info& info )
 	bool haveSyncMaster = false;
 	for( const auto &deviceInfo : devices ) {
 		auto device = make_shared<CaptureAzureKinect>( this );
+		device->setLogVerboseEnabled( mVerboseLogging );
 		device->init( deviceInfo );
 
 		// sanity check that we have exactly 1 sync master
@@ -816,10 +817,11 @@ void CaptureManager::updateUI()
 		return;
 	}
 
-	static bool sLogVerboseAll = false;
-	if( im::Checkbox( "log all verbose", &sLogVerboseAll ) ) {
+	if( im::Checkbox( "log all verbose", &mVerboseLogging ) ) {
+		// overwriting any per-device config option for logVerbose but oh well
+		// - could store original ma::Info if wanting to fix that
 		for( const auto &device : mCaptureDevices ) {
-			device->setLogVerboseEnabled( sLogVerboseAll );
+			device->setLogVerboseEnabled( mVerboseLogging );
 		}
 	}
 
@@ -877,9 +879,12 @@ void CaptureManager::updateUI()
 		mMaxSecondsUntilBodyRemoved = (double)maxSeconds;
 	}
 
-	if( mEnabled ) {
-		if( im::CollapsingHeader( "Azure Kinect Manager", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+	if( im::CollapsingHeader( "Azure Kinect Manager", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		if( mEnabled ) {
 			CaptureAzureKinect::managerUI();
+		}
+		else {
+			im::TextColored( ColorA::gray( 0.4f, 1 ), "CaptureManager disabled" );
 		}
 	}
 

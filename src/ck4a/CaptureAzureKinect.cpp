@@ -292,14 +292,18 @@ public:
 	~AzureKinectManager();
 
 	void setLogMessageLevel( k4a_log_level_t level );
-	void buildDeviceSerialMap();
+
+	void refresh();
 
 	//! Returns the device index with this serial number, of -1 if none was found
 	int getDeviceIndex( const std::string &serialNumber ) const;
 
-	static void onLogMessage( void *context, k4a_log_level_t level,	const char *file, const int line, const char *message );
-
+	int mNumDevicesInstalled = -1;
 	std::vector<DeviceInfo> mDeviceInfos;
+
+private:
+	void buildDeviceSerialMap();
+	static void onLogMessage( void *context, k4a_log_level_t level,	const char *file, const int line, const char *message );
 };
 
 
@@ -312,7 +316,7 @@ AzureKinectManager& manager()
 AzureKinectManager::AzureKinectManager()
 {
 	setLogMessageLevel( K4A_LOG_LEVEL_WARNING );
-	buildDeviceSerialMap();
+	refresh();
 }
 
 AzureKinectManager::~AzureKinectManager()
@@ -325,16 +329,24 @@ void AzureKinectManager::setLogMessageLevel( k4a_log_level_t level )
 	CI_VERIFY( result == K4A_RESULT_SUCCEEDED );
 }
 
+void AzureKinectManager::refresh()
+{
+	// only do this sparingly, may block in libusb
+	// TODO: still need a way to update this either on background thread or on libusb event, something like that
+	mNumDevicesInstalled = CaptureAzureKinect::getNumDevicesInstalled();
+
+	buildDeviceSerialMap();
+}
+
 void AzureKinectManager::buildDeviceSerialMap()
 {
-	// FIXME: this won't work when a different process on this PC has already opened the device
+	// TODO: this won't work when a different process on this PC has already opened the device
 	// - not sure what to do here, other than send the serial number over osc and append it to our vector there
 	//    - this would mean they should be stored in a map, and it's way more complicated
 	// - consider opening a feature request to be able to query the serial number before opening the device
 
-	uint32_t numDevices = (uint32_t)CaptureAzureKinect::getNumDevicesInstalled();
 	mDeviceInfos.clear();
-	for( uint32_t i = 0; i < numDevices; i++ ) {
+	for( uint32_t i = 0; i < (uint32_t)mNumDevicesInstalled; i++ ) {
 		k4a_device_t deviceHandle = NULL;
 		if( K4A_RESULT_SUCCEEDED != k4a_device_open( i, &deviceHandle ) )	{
 			CI_LOG_E( "Failed to open device at index: " << i );
@@ -383,6 +395,8 @@ struct CaptureAzureKinect::Data {
 	std::map<string, k4abt_skeleton_t> mSkeletons; //! stored each process so that parsing tweaks can continue while paused
 };
 
+// TODO: consider removing or moving this to AzureKinectManager
+// - calls can cause locks and want to make this private in any event
 // static
 int	CaptureAzureKinect::getNumDevicesInstalled()
 {
@@ -423,6 +437,11 @@ void CaptureAzureKinect::init( const ma::Info &info )
 	mDebugColor = info.get( "debugColor", mDebugColor );
 	mPos = info.get( "pos", mPos );
 	mOrientation = info.get( "orientation", mOrientation );
+
+	// set logVerbose only if exists in config (default is already set from CaptureManager)
+	if( info.contains( "logVerbose" ) ) {
+		mLogVerbose = info["logVerbose"];
+	}
 
 	if( info.contains( "hostId" ) ) {
 		mHostId = info.get<string>( "hostId" );
@@ -1675,13 +1694,13 @@ void CaptureAzureKinect::managerUI()
 {
 	if( im::Button( "refresh" ) ) {
 		// Well this really doesn't work unless it is synced with the devices
-		manager().buildDeviceSerialMap();
+		manager().refresh();
 	}
 
 	// TODO: combo for manager setLogMessageLevel
 
 	im::Text( "sdk version: %s", CaptureAzureKinect::getSDKVersionString() );
-	im::Text( "devices installed: %d", CaptureAzureKinect::getNumDevicesInstalled() );
+	im::Text( "devices installed: %d", manager().mNumDevicesInstalled );
 	const auto &deviceInfos = manager().mDeviceInfos;
 	for( int i = 0; i < deviceInfos.size(); i++ ) {
 		const auto &info = deviceInfos[i];
