@@ -109,6 +109,7 @@ private:
 	CaptureManager( const CaptureManager& ) = delete;
 	CaptureManager& operator=( const CaptureManager& ) = delete;
 
+	void initCaptureDevices( const std::vector<ma::Info> &devInfos );
 	void initNetworking();
 	//! Separated out for ease of hot-reload
 	void initOSCListeners();
@@ -148,7 +149,7 @@ private:
 	std::set<JointType>			mMergeResolveJoints;
 
 	std::vector<CaptureAzureKinectRef>		mCaptureDevices;
-
+	std::vector<ma::Info>					mDeviceInfos;
 	std::unique_ptr<ci::osc::ReceiverUdp>	mOSCReceiver;
 	std::unique_ptr<ci::osc::SenderUdp>		mOSCSender;
 	std::mutex								mMutexSender;

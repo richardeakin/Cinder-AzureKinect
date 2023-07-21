@@ -86,6 +86,9 @@ void CaptureManager::init( const ma::Info& info )
 		//host.mSendPort = hostInfo["sendPort"];
 	}
 
+	// store device Infos for (re)initializing later
+	mDeviceInfos = info.get<vector<ma::Info>>( "devices" );
+
 	if( ! mEnabled ) {
 		CI_LOG_I( "disabled." );	
 		return;
@@ -98,9 +101,22 @@ void CaptureManager::init( const ma::Info& info )
 		CI_LOG_I( "networking disabled" );
 	}
 
-	auto devices = info.get<vector<ma::Info>>( "devices" );
+	initCaptureDevices( mDeviceInfos );
+
+	if( mAutoStart ) {
+		CI_LOG_I( "starting all devices marked enabled.." );
+		for( const auto device : mCaptureDevices ) {
+			if( device->isEnabled() && ! device->isRemote() ) {
+				device->start();
+			}
+		}
+	}
+}
+
+void CaptureManager::initCaptureDevices( const vector<ma::Info> &devInfos )
+{
 	bool haveSyncMaster = false;
-	for( const auto &deviceInfo : devices ) {
+	for( const auto &deviceInfo : devInfos ) {
 		auto device = make_shared<CaptureAzureKinect>( this );
 		device->setLogVerboseEnabled( mVerboseLogging );
 		device->init( deviceInfo );
@@ -122,15 +138,6 @@ void CaptureManager::init( const ma::Info& info )
 	}
 
 	CI_LOG_I( "initialized " << mCaptureDevices.size() << " devices." );
-
-	if( mAutoStart ) {
-		CI_LOG_I( "starting all devices marked enabled.." );
-		for( const auto device : mCaptureDevices ) {
-			if( device->isEnabled() && ! device->isRemote() ) {
-				device->start();
-			}
-		}
-	}
 }
 
 void CaptureManager::save( ma::Info& info ) const
@@ -180,15 +187,16 @@ void CaptureManager::setEnabled( bool b )
 	}
 
 	mEnabled = b;
-
-	// TODO: should re-init in this case?
-	// - Don't have the config info though, would need to serialize that
-
+	
 	if( mNetworkingEnabled && ( ! mOSCSender || ! mOSCReceiver ) ) {
 		initNetworking();
 	}
 
 	if( mEnabled ) {
+		if( mCaptureDevices.empty() ) {
+			// CaptureManager was disabled during init, CaptureDevicees won't yet be initialized, so do it now
+			initCaptureDevices( mDeviceInfos );
+		}
 		if( mAutoStart ) {
 			startAll();
 		}
@@ -1051,7 +1059,10 @@ void CaptureManager::enabledUI( float nameOffset )
 {
 	im::ScopedId idScope( "ck4a::CaptureManager" );
 
-	im::Checkbox( "CaptureManager", &mEnabled );
+	bool enabled = mEnabled;
+	if( im::Checkbox( "CaptureManager", &enabled ) ) {
+		setEnabled( enabled );
+	}
 	im::SameLine();
 	im::SetCursorPosX( nameOffset );
 	im::Checkbox( "ui", &mUIEnabled );
