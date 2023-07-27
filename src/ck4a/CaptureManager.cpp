@@ -72,18 +72,20 @@ void CaptureManager::init( const ma::Info& info )
 
 	// parse hosts
 	mNetworkingEnabled = info.get<bool>( "networkingEnabled", mNetworkingEnabled );
-	mHostId = info.get<string>( "hostId" ); // the id for this instance host
+	mHostId = info.get<string>( "hostId", "default" ); // the id for this instance host
 
-	auto hosts = info.get<vector<ma::Info>>( "hosts" );
-
-	for( const auto &hostInfo : hosts ) {
-		mHosts.emplace_back();
-		auto &host = mHosts.back();
-		host.mId = hostInfo.get<string>( "id" );
-		host.mMaster = hostInfo.get( "master", false );
-		host.mIpAddress = hostInfo.get<string>( "ipAddress", "127.0.0.1" );
-		host.mReceivePort = hostInfo["receivePort"];
-		//host.mSendPort = hostInfo["sendPort"];
+	// optional hosts section for networked setup (can be skipped if running only one app/process)
+	if( info.contains( "hosts" ) ) {
+		auto hosts = info.get<vector<ma::Info>>( "hosts" );
+		for( const auto &hostInfo : hosts ) {
+			mHosts.emplace_back();
+			auto &host = mHosts.back();
+			host.mId = hostInfo.get<string>( "id" );
+			host.mMaster = hostInfo.get( "master", false );
+			host.mIpAddress = hostInfo.get<string>( "ipAddress", "127.0.0.1" );
+			host.mReceivePort = hostInfo["receivePort"];
+			//host.mSendPort = hostInfo["sendPort"];
+		}
 	}
 
 	// store device Infos for (re)initializing later
