@@ -220,9 +220,9 @@ const std::array<vec3, 6> sBodyColors = {
 
 } // anon
 
-vec3 getDebugBodyColor( int bodyId )
+vec3 getDebugBodyColor( int i )
 {
-	return sBodyColors[bodyId % sBodyColors.size()];
+	return sBodyColors[i % sBodyColors.size()];
 }
 
 vec3 getDebugBodyColor( const std::string &bodyId )

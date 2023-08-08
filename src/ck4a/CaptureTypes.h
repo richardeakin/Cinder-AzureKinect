@@ -98,8 +98,8 @@ const char*  jointTypeAsString( JointType jointType );
 JointType	 jointTypeFromString( const std::string &jointType );
 //!
 JointType	 getParentJointType( JointType jointType );
-//!
-vec3		 getDebugBodyColor( int bodyId );
+//! Returns one of 6 unique colors depending on i
+vec3		 getDebugBodyColor( int i );
 //!
 vec3		 getDebugBodyColor( const std::string &bodyId );
 
@@ -124,6 +124,9 @@ struct Joint {
 	const char*	getTypeAsString() const		{ return jointTypeAsString( mType ); }
 	JointType	getParentJointType() const	{ return ck4a::getParentJointType( mType ); }
 	vec3		getDir() const				{ return glm::normalize( vec3( mOrientation * glm::vec4( 0, 0, -1, 1 ) ) ); 	}
+
+	bool	isHand() const { return mType == JointType::HandLeft || mType == JointType::HandRight; }
+	// TODO: add for all left/right types
 };
 
 class Body {

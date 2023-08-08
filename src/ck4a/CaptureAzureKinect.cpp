@@ -1629,7 +1629,7 @@ void CaptureAzureKinect::updateUI()
 	im::Checkbox( "capture buffers", &mCopyBuffersEnabled );
 
 	if( mCopyBuffersEnabled && im::CollapsingHeader( "Buffers", ImGuiTreeNodeFlags_DefaultOpen ) ) {
-		auto opts = imx::TextureViewerOptions().treeNodeFlags( ImGuiTreeNodeFlags_DefaultOpen );
+		auto opts = imx::TextureViewerOptions().treeNodeFlags( ImGuiTreeNodeFlags_DefaultOpen ).flipY();
 		imx::Texture2d( "color", mColorTexture, opts );
 		imx::TextureDepth( "depth", mDepthTexture, opts );
 		imx::Texture2d( "depth table", mTableDepth2d3dTexture, opts );
