@@ -1464,7 +1464,7 @@ void CaptureAzureKinect::updateUI()
 	if( im::CollapsingHeader( "Profiling" ) ) {
 		//double processDuration = mLastProcessDuration;
 		im::Text( "process duration: %0.2fms", float( mLastProcessDuration * 1000.0 ) );
-		im::PlotLines( "##process duration lines", mProcessDurationsBuffer.data(), int( mProcessDurationsBuffer.size() ), 0, 0, 0.0f, 120.0f, ImVec2( ImGui::GetContentRegionAvailWidth(), 90 ) );
+		im::PlotLines( "##process duration lines", mProcessDurationsBuffer.data(), int( mProcessDurationsBuffer.size() ), 0, 0, 0.0f, 120.0f, ImVec2( im::GetContentRegionAvail().x, 90 ) );
 	}
 	if( im::CollapsingHeader( "Calibration", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		im::DragFloat3( "pos", &mPos.x, 0.5f );
