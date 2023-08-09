@@ -207,6 +207,18 @@ JointType getParentJointType( JointType jointType )
 	return JointType::Unknown;
 }
 
+const std::vector<std::string>&	allJointNames()
+{
+	static std::vector<std::string> sJointNames;
+	if( sJointNames.empty() ) {
+		for( size_t i = 0; i < (size_t)JointType::Count; i++ ) {
+			sJointNames.push_back( jointTypeAsString( (JointType)i ) );
+		}
+	}
+
+	return sJointNames;
+}
+
 namespace {
 
 const std::array<vec3, 6> sBodyColors = {

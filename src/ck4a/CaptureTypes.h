@@ -98,6 +98,9 @@ const char*  jointTypeAsString( JointType jointType );
 JointType	 jointTypeFromString( const std::string &jointType );
 //!
 JointType	 getParentJointType( JointType jointType );
+//! All Joints in string form, in the same order as their enum value. Useful for GUI selection.
+const std::vector<std::string>&	allJointNames();
+
 //! Returns one of 6 unique colors depending on i
 vec3		 getDebugBodyColor( int i );
 //!
