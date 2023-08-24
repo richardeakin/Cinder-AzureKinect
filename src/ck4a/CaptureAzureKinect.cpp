@@ -478,22 +478,32 @@ void CaptureAzureKinect::init( const ma::Info &info )
 		else {
 			setStatus( Status::Failed );
 		}
+
+		// done - we won't try to setup a physical device
 		return;
 	}
 
 	if( mRemote ) {
 		CI_LOG_I( "remote device '" << mId << "marked as stopped" );
 		setStatus( Status::Stopped );
+
+		// done - we won't try to setup a physical device
 		return;
 	}
 
 	if( mEnabled && mDeviceIndex >= getNumDevicesInstalled() ) {
-		CI_LOG_E( "device index (" << mDeviceIndex << ") out of range (" << k4a_device_get_installed_count() << ")" );
+		if( ! getManager()->isEnabled() ) {
+			// let CaptureManager try to enable when it is turned back on
+			setStatus( Status::Disabled );
+		}
+		else {
+			CI_LOG_E( "device index (" << mDeviceIndex << ") out of range (" << k4a_device_get_installed_count() << ")" );
 
-		setStatus( Status::Failed );
-		// TODO: rename this to timeLastInit? and wait on that for autoStart?
-		// - this seems nice, because then I can handle on the re-init stuff from CaptureManager
-		mTimeNeedsReinit = getManager()->getCurrentTime();
+			setStatus( Status::Failed );
+			// TODO: rename this to timeLastInit? and wait on that for autoStart?
+			// - this is appealing because then I can handle on the re-init stuff from CaptureManager
+			mTimeNeedsReinit = getManager()->getCurrentTime();
+		}
 		return;
 	}
 
@@ -1631,7 +1641,7 @@ void CaptureAzureKinect::updateUI()
 	if( mCopyBuffersEnabled && im::CollapsingHeader( "Buffers", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		auto opts = imx::TextureViewerOptions().treeNodeFlags( ImGuiTreeNodeFlags_DefaultOpen ).flipY();
 		imx::Texture2d( "color", mColorTexture, opts );
-		imx::TextureDepth( "depth", mDepthTexture, opts );
+		imx::TextureDepth( "depth", mDepthTexture, imx::TextureViewerOptions( opts ).samplerType( imx::SamplerType::SamplerUInt ) );
 		imx::Texture2d( "depth table", mTableDepth2d3dTexture, opts );
 		if( mBodyIndexMapEnabled ) {
 			imx::Texture2d( "body index map", mBodyIndexMapTexture, opts );

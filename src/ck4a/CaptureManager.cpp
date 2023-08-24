@@ -109,7 +109,12 @@ void CaptureManager::init( const ma::Info& info )
 		CI_LOG_I( "starting all devices marked enabled.." );
 		for( const auto device : mCaptureDevices ) {
 			if( device->isEnabled() && ! device->isRemote() ) {
-				device->start();
+				if( device->getStatus() == CaptureDevice::Status::Failed ) {
+					CI_LOG_W( "\t- skipping failed device with id: " << device->getId() );
+				}
+				else {
+					device->start();
+				}
 			}
 		}
 	}
