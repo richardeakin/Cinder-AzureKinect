@@ -135,6 +135,7 @@ private:
 	bool            mPaused = false;				//! if the device is running but we're not updating data
 	bool			mUIEnabled = true;				//! if UI window will be drawn
 	bool			mDepthEnabled = true;			//! if depth buffer is enabled
+	DepthMode		mDepthMode = DepthMode::WFovBinned; //! Corresponds to k4a_depth_mode_t
 	bool			mColorEnabled = false;			//! if color buffer is enabled
 	bool			mBodyTrackingEnabled = true;	//! if body tracking is enabled
 	bool			mBodyIndexMapEnabled = false;	//! if the body index map is extracted

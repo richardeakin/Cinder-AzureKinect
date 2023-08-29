@@ -20,6 +20,7 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "ck4a/CaptureTypes.h"
+#include "cinder/CinderAssert.h"
 
 #include <array>
 
@@ -230,6 +231,15 @@ const std::array<vec3, 6> sBodyColors = {
 	vec3( 1, 0, 1 )
 };
 
+const std::vector<std::string> sDepthModeLabels = {
+	"Off",
+	"NFovBinned",
+	"NFovUnbinned",
+	"WFovBinned",
+	"WFovUnbinned",
+	"PassiveIR"
+};
+
 } // anon
 
 vec3 getDebugBodyColor( int i )
@@ -256,6 +266,31 @@ const char* playbackStatusToString( PlaybackStatus status )
 	}
 
 	return "(unknown)";
+}
+
+const std::vector<std::string>& getDepthModeLabels()
+{
+	return sDepthModeLabels;
+}
+
+const std::string& modeToString( DepthMode mode )
+{
+	size_t index = (size_t)mode;
+	CI_ASSERT( index < sDepthModeLabels.size() );
+	return sDepthModeLabels.at( index );
+}
+
+DepthMode modeFromString( const std::string &str )
+{
+	if( str == "Off" )					return DepthMode::Off;
+	else if( str == "NFovBinned" )		return DepthMode::NFovBinned;
+	else if( str == "NFovUnbinned" )	return DepthMode::NFovUnbinned;
+	else if( str == "WFovBinned" )		return DepthMode::WFovBinned;
+	else if( str == "WFovUnbinned" )	return DepthMode::WFovUnbinned;
+	else if( str == "PassiveIR" )		return DepthMode::PassiveIR;
+
+	CI_ASSERT_NOT_REACHABLE();
+	return DepthMode::Count;
 }
 
 } // namespace ck4a

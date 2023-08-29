@@ -74,6 +74,8 @@ void CaptureManager::init( const ma::Info& info )
 	mNetworkingEnabled = info.get<bool>( "networkingEnabled", mNetworkingEnabled );
 	mHostId = info.get<string>( "hostId", "default" ); // the id for this instance host
 
+	mDefaultDepthMode = modeFromString( info.get<string>( "depthMode", modeToString( mDefaultDepthMode ) ) );
+
 	// optional hosts section for networked setup (can be skipped if running only one app/process)
 	if( info.contains( "hosts" ) ) {
 		auto hosts = info.get<vector<ma::Info>>( "hosts" );
@@ -124,9 +126,14 @@ void CaptureManager::initCaptureDevices( const vector<ma::Info> &devInfos )
 {
 	bool haveSyncMaster = false;
 	for( const auto &deviceInfo : devInfos ) {
+		auto infoCopy = deviceInfo;
+		if( ! infoCopy.contains( "depthMode" ) ) {
+			infoCopy["depthMode"] = modeToString( mDefaultDepthMode );
+		}
+
 		auto device = make_shared<CaptureAzureKinect>( this );
 		device->setLogVerboseEnabled( mVerboseLogging );
-		device->init( deviceInfo );
+		device->init( infoCopy );
 
 		// sanity check that we have exactly 1 sync master
 		if( mSyncDevicesEnabled ) {
@@ -158,6 +165,7 @@ void CaptureManager::save( ma::Info& info ) const
 	info["maxBodyDistance"] = mMaxBodyDistance;
 	info["mergeMultiDevice"] = mMergeMultiDevice;
 	info["jointMatchMaxDistance"] = mJointDistanceConsideredSame;
+	// TODO: save out depthMode, but make sure that it doesn't override a device depthMode if it wasn't originally specified
 
 	std::vector<ma::Info> devices;
 	for( const auto &device : mCaptureDevices ) {

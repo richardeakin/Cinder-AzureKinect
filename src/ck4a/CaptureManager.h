@@ -138,12 +138,13 @@ private:
 	bool    mPaused = false; //! If true, will leave devices open but data will not be updated (for development)
 	bool	mUIEnabled = true;
 	bool    mSyncDevicesEnabled = false;
-	bool	mMergeMultiDevice = false; //! If true, merges bodies from multiple devices into one container, stored on Capturemanager
+	bool	mMergeMultiDevice = false; //! If true, merges bodies from multiple devices into one container, stored on CaptureManager
 	float	mJointDistanceConsideredSame = 15;
 	double	mMaxSecondsUntilBodyRemoved = 0.1f;
 	float	mMaxBodyDistance = 250;
 	double  mHeartbeatSeconds = 2;
 	bool    mVerboseLogging = false;
+	DepthMode mDefaultDepthMode = DepthMode::WFovBinned;
 
 	std::vector<Body>			mMergedBodies;
 	std::set<JointType>			mMergeResolveJoints;

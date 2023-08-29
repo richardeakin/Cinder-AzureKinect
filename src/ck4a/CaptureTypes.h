@@ -179,4 +179,21 @@ enum class PlaybackStatus {
 
 const char* playbackStatusToString( PlaybackStatus status );
 
+//! Corresponds to k4a_depth_mode_t
+//! https://microsoft.github.io/Azure-Kinect-Sensor-SDK/master/group___enumerations_ga3507ee60c1ffe1909096e2080dd2a05d.html
+enum class DepthMode {
+	Off = 0,		//! K4A_DEPTH_MODE_OFF
+	NFovBinned,		//! K4A_DEPTH_MODE_NFOV_2X2BINNED
+	NFovUnbinned,	//! K4A_DEPTH_MODE_NFOV_UNBINNED
+	WFovBinned,		//! K4A_DEPTH_MODE_WFOV_2X2BINNED
+	WFovUnbinned,	//! K4A_DEPTH_MODE_WFOV_UNBINNED
+	PassiveIR,		//! K4A_DEPTH_MODE_PASSIVE_IR
+	Count
+};
+
+const std::string&	modeToString( DepthMode mode );
+DepthMode			modeFromString( const std::string &str );
+//! Returns a vector<string> for using in imgui / config
+const std::vector<std::string>& getDepthModeLabels();
+
 } // namespace ck4a

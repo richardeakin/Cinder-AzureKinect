@@ -53,10 +53,6 @@ namespace ck4a {
 
 namespace {
 
-// TODO: set this from CaptureManager (but also might want to set individually, later though)
-//const k4a_depth_mode_t DEPTH_MODE = K4A_DEPTH_MODE_NFOV_UNBINNED;
-const k4a_depth_mode_t DEPTH_MODE = K4A_DEPTH_MODE_WFOV_2X2BINNED;
-
 // Allowing at least 160 microseconds between depth cameras should ensure they do not interfere with one another.
 constexpr uint32_t MIN_TIME_BETWEEN_DEPTH_CAMERA_PICTURES_USEC = 160;
 
@@ -161,6 +157,19 @@ const char* depthModeToString( k4a_depth_mode_t mode )
 	}
 
 	return "(unknown)";
+}
+
+k4a_depth_mode_t depthModeToK4A( ck4a::DepthMode &mode )
+{
+	switch( mode ) {
+		case DepthMode::Off:				return K4A_DEPTH_MODE_OFF;
+		case DepthMode::NFovBinned:			return K4A_DEPTH_MODE_NFOV_2X2BINNED;
+		case DepthMode::NFovUnbinned:		return K4A_DEPTH_MODE_NFOV_UNBINNED;
+		case DepthMode::WFovBinned:			return K4A_DEPTH_MODE_WFOV_2X2BINNED;
+		case DepthMode::WFovUnbinned:		return K4A_DEPTH_MODE_WFOV_UNBINNED;
+		case DepthMode::PassiveIR:			return K4A_DEPTH_MODE_PASSIVE_IR;
+		default: CI_ASSERT_NOT_REACHABLE();
+	}
 }
 
 // https://learn.microsoft.com/en-us/azure/Kinect-dk/hardware-specification
@@ -430,7 +439,14 @@ void CaptureAzureKinect::init( const ma::Info &info )
 	mId = info.get<string>( "id" );
 	mEnabled = info.get( "enabled", mEnabled );
 	mUIEnabled = info.get( "ui", mUIEnabled );
-	mDepthEnabled = info.get( "depth", mDepthEnabled ); // TODO: pass in a depth / color format instead, or "disabld"
+	mDepthEnabled = info.get( "depth", mDepthEnabled );
+	if( mDepthEnabled ) {
+		// CaptureManager may specify a default, still each device can override depthMode
+		mDepthMode = modeFromString( info.get<string>( "depthMode", modeToString( mDepthMode ) ) );
+	}
+	else {
+		mDepthMode = DepthMode::Off;
+	}
 	mColorEnabled = info.get( "color", mColorEnabled );
 	mBodyTrackingEnabled = info.get( "bodyTracking", mBodyTrackingEnabled );
 	mBodyIndexMapEnabled = info.get( "bodyIndexMap", mBodyIndexMapEnabled );
@@ -717,14 +733,14 @@ void CaptureAzureKinect::threadEntry()
 	if( mRecordingFilePath.empty() ) {
 		// configure stream
 		k4a_device_configuration_t deviceConfig = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-		// TODO: add params for color and depth format and resolution instead (one being disabled)
-		// - will set in "capture" section, although maybe merge "device" params into this
+		// TODO: add params for color format and resolution
+		// - default set in "capture" section, although "device" can override with same name params
 		if( mColorEnabled ) {
 			deviceConfig.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
 			deviceConfig.color_resolution = K4A_COLOR_RESOLUTION_1080P;
 		}
 		if( mDepthEnabled ) {
-			deviceConfig.depth_mode = DEPTH_MODE;
+			deviceConfig.depth_mode = depthModeToK4A( mDepthMode );
 		}
 
 		deviceConfig.camera_fps = K4A_FRAMES_PER_SECOND_30; // TODO: expose as param
@@ -1467,6 +1483,17 @@ void CaptureAzureKinect::updateUI()
 	}
 
 	im::Checkbox( "log verbose", &mLogVerbose );
+	if( ! mDepthEnabled ) {
+		imx::BeginDisabled();
+	}
+	int depthMode = (int)mDepthMode;
+	if( im::Combo( "depth mode", &depthMode, getDepthModeLabels() ) ) {
+		mDepthMode = (DepthMode)depthMode;
+		reinit();
+	}
+	if( ! mDepthEnabled ) {
+		imx::EndDisabled();
+	}
 	im::ColorEdit3( "debug color", &mDebugColor.r, ImGuiColorEditFlags_Float );
 
 	im::Separator();
