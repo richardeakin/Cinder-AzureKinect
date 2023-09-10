@@ -450,6 +450,7 @@ void CaptureAzureKinect::init( const ma::Info &info )
 	mColorEnabled = info.get( "color", mColorEnabled );
 	mBodyTrackingEnabled = info.get( "bodyTracking", mBodyTrackingEnabled );
 	mBodyIndexMapEnabled = info.get( "bodyIndexMap", mBodyIndexMapEnabled );
+	mTrackerTemporalSmoothingFactor = info.get( "bodyTrackingSmoothingFactor", mTrackerTemporalSmoothingFactor );
 	mDebugColor = info.get( "debugColor", mDebugColor );
 	mPos = info.get( "pos", mPos );
 	mOrientation = info.get( "orientation", mOrientation );
@@ -583,6 +584,7 @@ void CaptureAzureKinect::save( ma::Info &info ) const
 	info["depth"] = mDepthEnabled;
 	info["color"] = mColorEnabled;
 	info["bodyTracking"] = mBodyTrackingEnabled;
+	info["bodyTrackingSmoothingFactor"] = mTrackerTemporalSmoothingFactor;
 	info["debugColor"] = mDebugColor;
 	info["pos"] = mPos;
 	info.set<quat>( "orientation", mOrientation );
@@ -1586,8 +1588,8 @@ void CaptureAzureKinect::updateUI()
 	if( mBodyTrackingEnabled && im::CollapsingHeader( ( "Body Tracking (bodies: " + to_string( mTotalBodiesTrackedLastFrame ) + ")###Bodies" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		if( mData->mTracker ) {
 			// TODO: make temporal smoothing a deviceConfig param on CaptureManager itself
+			// - have to set on each device in config for the moment
 			// - devices can override here but CaptureManager will have this param that it can set on all devices
-			static float mTrackerTemporalSmoothingFactor = 0.6f;
 			if( im::SliderFloat( "temporal smoothing", &mTrackerTemporalSmoothingFactor, 0, 1 ) ) {
 				k4abt_tracker_set_temporal_smoothing( mData->mTracker, mTrackerTemporalSmoothingFactor );
 			}

@@ -157,7 +157,7 @@ private:
 	double							mTimeStartedRunning = -1;
 	int64_t							mCurrentBodyFrame = -1; // incremented whenever a new frame is processed on the capture thread
 	size_t							mTotalBodiesTrackedLastFrame = 0;
-
+	float							mTrackerTemporalSmoothingFactor = 0.6f;
 	// profiling
 	std::atomic<double>				mLastProcessDuration = { 0 };
 	std::array<float, 180>			mProcessDurationsBuffer;
