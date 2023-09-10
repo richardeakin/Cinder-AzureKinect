@@ -451,6 +451,7 @@ void CaptureAzureKinect::init( const ma::Info &info )
 	mBodyTrackingEnabled = info.get( "bodyTracking", mBodyTrackingEnabled );
 	mBodyIndexMapEnabled = info.get( "bodyIndexMap", mBodyIndexMapEnabled );
 	mTrackerTemporalSmoothingFactor = info.get( "bodyTrackingSmoothingFactor", mTrackerTemporalSmoothingFactor );
+	mCopyBuffersEnabled = info.get( "copyBuffers", mCopyBuffersEnabled ); // TODO: add config vars for cpu vs gpu copy
 	mDebugColor = info.get( "debugColor", mDebugColor );
 	mPos = info.get( "pos", mPos );
 	mOrientation = info.get( "orientation", mOrientation );
@@ -585,6 +586,7 @@ void CaptureAzureKinect::save( ma::Info &info ) const
 	info["color"] = mColorEnabled;
 	info["bodyTracking"] = mBodyTrackingEnabled;
 	info["bodyTrackingSmoothingFactor"] = mTrackerTemporalSmoothingFactor;
+	info["copyBuffers"] = mCopyBuffersEnabled;
 	info["debugColor"] = mDebugColor;
 	info["pos"] = mPos;
 	info.set<quat>( "orientation", mOrientation );
