@@ -401,6 +401,10 @@ void CaptureManager::mergeBodies()
 					string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
 					Body bodyCopy = bodyA;
 					bodyCopy.mId = key;
+					// move the copied body into 'room space'
+					for( auto &joint : bodyCopy.mJoints ) {
+						joint.second.mPos += device->getPos();
+					}
 					auto resultIt = matchedBodies.insert( { key, bodyCopy } );
 					CI_VERIFY( resultIt.second );
 
@@ -418,10 +422,13 @@ void CaptureManager::mergeBodies()
 						im::SameLine();
 #endif
 						// compare joint and if close enough, merge
-						const Joint *jointB = bodyM.getJoint( JointType::Head );
-						CI_ASSERT( (int)jointB->mConfidence >= (int)JointConfidence::Medium );
+						const Joint *jointM = bodyM.getJoint( JointType::Head );
+						CI_ASSERT( (int)jointM->mConfidence >= (int)JointConfidence::Medium );
 
-						float dist = glm::distance( jointA->mPos, jointB->mPos );
+						// TODO (callib): multiply this by device transform instead of pos
+						vec3 posA = jointA->mPos + device->getPos();
+						vec3 posM = jointM->mPos; // this has already been transformed
+						float dist = glm::distance( posA, posM );
 						Color col( 1, 1, 1 );
 						if( dist < mJointDistanceConsideredSame ) {
 							col = Color( 0, 1, 0 );
@@ -433,13 +440,11 @@ void CaptureManager::mergeBodies()
 						if( dist < mJointDistanceConsideredSame ) {
 							bodyMatched = true;
 							// merge the two bodies
-							// TODO: consider storing indices + devices and doing the merge afterwards
 							bodyM.merge( bodyA );
 #if DEBUG_BODY_UI
 							im::SameLine(); im::Text( "|merged|" );
 #endif
 							break; // don't compare any other bodies from this device
-							// TODO: we might want to find the closest / best candidate body instead
 						}
 
 					}
