@@ -40,7 +40,7 @@ const Joint* Body::getJoint( JointType type ) const
 	return nullptr;
 }
 
-void Body::merge( const Body &other )
+void Body::merge( const Body &other, const MergeParams &params, double currentTime )
 {
 	for( auto &kv : mJoints ) {
 		auto &joint = kv.second;
@@ -60,6 +60,9 @@ void Body::merge( const Body &other )
 			}
 		}
 
+		if( params.mSmoothJoints ) {
+			joint.updateSmoothedPos( currentTime );
+		}
 	}
 }
 
@@ -218,6 +221,11 @@ const std::vector<std::string>&	allJointNames()
 	}
 
 	return sJointNames;
+}
+
+void Joint::updateSmoothedPos( double currentTime )
+{
+	mPosFiltered.set( mPos, currentTime );
 }
 
 namespace {

@@ -19,10 +19,6 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVE
 POSSIBILITY OF SUCH DAMAGE.
 */
 
-#if defined( DC_DEBUG_RELEASE )
-#pragma optimize( "", off )
-#endif
-
 #include "ck4a/CaptureAzureKinect.h"
 #include "ck4a/CaptureManager.h"
 
@@ -1078,12 +1074,10 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		joint.mType = jointType; 
 		joint.mConfidence = (JointConfidence)jointKinect.confidence_level;
 
-		joint.mPos = toVec3( jointKinect.position );	
-		joint.mPos /= 10; // k4a uses millimeters for 3D joint positions, we use centimeters
-		//joint.mPos = vec3( vec4( joint.mPos, 1 ) * mOrientation ); // rotate relative to room
-
-		joint.mPos *= vec3( -1, -1, 1 ); // flip x and y axes
-		//joint.mPos += mPos; // translate relative to room
+		vec3 pos = toVec3( jointKinect.position );
+		pos /= 10; // k4a uses millimeters for 3D joint positions, we use centimeters
+		pos *= vec3( -1, -1, 1 ); // flip x and y axes
+		joint.setPos( pos );
 
 		// joint orientation:
 		// - start with an orientation to go from kinect camera -> opengl
@@ -1102,7 +1096,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		if( (int)joint.mConfidence >= (int)JointConfidence::Medium ) {
 			hasGoodJoint = true;
 			if( currentTime >= 0 ) {
-				joint.mMotionTrackerPos.storePos( joint.mPos, currentTime );
+				joint.mMotionTrackerPos.storePos( joint.getPos(), currentTime );
 				joint.mVelocity = joint.mMotionTrackerPos.calcVelocity();
 			}
 		}
