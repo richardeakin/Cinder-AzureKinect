@@ -321,7 +321,7 @@ void CaptureManager::keyDown( app::KeyEvent &event )
 	event.setHandled( handled );
 }
 
-void CaptureManager::update()
+void CaptureManager::update( double currentTime )
 {
 	if( ! mEnabled ) {
 		return;
@@ -334,7 +334,7 @@ void CaptureManager::update()
 	}
 
 	if( mMergeMultiDevice ) {
-		mergeBodies();
+		mergeBodies( currentTime );
 	}
 }
 
@@ -349,7 +349,7 @@ string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId 
 	return deviceId + "-" + bodyId;
 }
 
-void CaptureManager::mergeBodies()
+void CaptureManager::mergeBodies( double currentTime )
 {
 	CI_PROFILE_CPU( "CaptureManager::mergeBodies" );
 
@@ -401,9 +401,12 @@ void CaptureManager::mergeBodies()
 					string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
 					Body bodyCopy = bodyA;
 					bodyCopy.mId = key;
-					// move the copied body into 'room space'
+					// move the copied body into 'room space' and smooth if enabled
 					for( auto &joint : bodyCopy.mJoints ) {
-						joint.second.mPos += device->getPos();
+						joint.second.setPos( joint.second.getPos() + device->getPos() );
+						if( mMergeBodySmoothingFactor > 0 ) {
+							joint.second.updateSmoothedPos( currentTime );
+						}
 					}
 					auto resultIt = matchedBodies.insert( { key, bodyCopy } );
 					CI_VERIFY( resultIt.second );
@@ -426,8 +429,8 @@ void CaptureManager::mergeBodies()
 						CI_ASSERT( (int)jointM->mConfidence >= (int)JointConfidence::Medium );
 
 						// TODO (callib): multiply this by device transform instead of pos
-						vec3 posA = jointA->mPos + device->getPos();
-						vec3 posM = jointM->mPos; // this has already been transformed
+						vec3 posA = jointA->getPos() + device->getPos();
+						vec3 posM = jointM->getPos(); // this has already been transformed
 						float dist = glm::distance( posA, posM );
 						Color col( 1, 1, 1 );
 						if( dist < mJointDistanceConsideredSame ) {
@@ -440,7 +443,8 @@ void CaptureManager::mergeBodies()
 						if( dist < mJointDistanceConsideredSame ) {
 							bodyMatched = true;
 							// merge the two bodies
-							bodyM.merge( bodyA );
+							auto mergeParams = Body::MergeParams().smoothJoints( mMergeBodySmoothingFactor > 0 ? true : false ); // TODO: pass in float instead
+							bodyM.merge( bodyA, mergeParams, currentTime );
 #if DEBUG_BODY_UI
 							im::SameLine(); im::Text( "|merged|" );
 #endif
@@ -454,6 +458,12 @@ void CaptureManager::mergeBodies()
 						string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
 						Body bodyCopy = bodyA;
 						bodyCopy.mId = key;
+						if( mMergeBodySmoothingFactor > 0 ) {
+							// copy smoothed joint positions
+							for( auto &joint : bodyCopy.mJoints ) {
+								joint.second.setPos( joint.second.getPosFiltered() );
+							}
+						}
 						auto resultIt = matchedBodies.insert( { key, bodyCopy } );
 						CI_VERIFY( resultIt.second );
 #if DEBUG_BODY_UI
@@ -734,7 +744,7 @@ void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 
 		JointBlob b;
 		b.type = (int)joint.mType;
-		b.pos = joint.mPos;
+		b.pos = joint.getPos();
 		b.vel = joint.mVelocity;
 		b.confidence = (int)joint.mConfidence;
 		b.orientation = joint.mOrientation;
@@ -783,7 +793,7 @@ void CaptureManager::receiveBody( const osc::Message &msg )
 
 		Joint joint;
 		joint.mType = (JointType)jointBlob.type;
-		joint.mPos = jointBlob.pos;
+		joint.setPos( jointBlob.pos );
 		joint.mVelocity = jointBlob.vel;
 		joint.mConfidence = (JointConfidence)jointBlob.confidence;
 		joint.mOrientation = jointBlob.orientation;
@@ -887,6 +897,7 @@ void CaptureManager::updateUI()
 
 	im::Checkbox( "auto start", &mAutoStart );
 	im::Checkbox( "merge multi device", &mMergeMultiDevice );
+	im::DragFloat( "merge smoothing", &mMergeBodySmoothingFactor, 0.5f, 0.0001f, 1.0f );
 
 	// TODO: make these checkboxes (will need to re-init networking / devices)
 	im::Value( "networking enabled", mNetworkingEnabled );
@@ -956,7 +967,7 @@ void CaptureManager::updateUI()
 						im::Text( "%13s: confidence: %d,", joint.getTypeAsString(), (int)joint.mConfidence );
 						im::SameLine();
 						im::Text( "pos: [%+3.1f, %+3.1f, %+3.1f], vel: [%+4.2f, %+4.2f, %+4.2f], speed: %.2f",
-							joint.mPos.x, joint.mPos.y, joint.mPos.z,
+							joint.getPos().x, joint.getPos().y, joint.getPos().z,
 							joint.mVelocity.x, joint.mVelocity.y, joint.mVelocity.z,
 							glm::length( joint.mVelocity )
 						);

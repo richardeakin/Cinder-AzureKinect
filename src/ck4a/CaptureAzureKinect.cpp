@@ -1137,7 +1137,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 	}
 
 	auto center = body->getCenterJoint();
-	vec2 centerXZ( center->mPos.x, center->mPos.z );
+	vec2 centerXZ( center->getPos().x, center->getPos().z );
 	if( glm::length( centerXZ ) > maxDistance ) {
 		// center joint too far away, reject
 		return false;
@@ -1636,7 +1636,7 @@ void CaptureAzureKinect::updateUI()
 						im::Text( "%13s: confidence: %d,", joint.getTypeAsString(), (int)joint.mConfidence ); // TODO: make this lin the tree node
 						im::SameLine();
 						im::Text( "pos: [%+3.1f, %+3.1f, %+3.1f], vel: [%+4.2f, %+4.2f, %+4.2f], speed: %.2f",
-							joint.mPos.x, joint.mPos.y, joint.mPos.z,
+							joint.getPos().x, joint.getPos().y, joint.getPos().z,
 							joint.mVelocity.x, joint.mVelocity.y, joint.mVelocity.z,
 							glm::length( joint.mVelocity )
 						);

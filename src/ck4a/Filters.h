@@ -129,6 +129,11 @@ struct FilteredVec3 {
 
 	vec3 get() const
 	{
+		return { 
+			mX.mValue,
+			mY.mValue,
+			mZ.mValue
+		};
 	}
 
 	FilteredValue<float> mX;

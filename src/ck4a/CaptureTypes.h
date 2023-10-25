@@ -136,7 +136,10 @@ struct Joint {
 	bool		isHand() const { return mType == JointType::HandLeft || mType == JointType::HandRight; }
 	// TODO: add for all left/right types
 
-	void setPos( const vec3 &pos )	{ mPos = pos; }
+	//! Set the joint position
+	void setPos( const vec3 &p )	{ mPos = p; }
+	//! Moves the joint position by the specified offset
+	void offsetPos( const vec3 &p )	{ mPos += p; }
 	//! Uses a 1euro filter to smooth joints
 	void updateSmoothedPos( double currentTime );
 private:
@@ -169,8 +172,9 @@ class Body {
 	JointType		getCenterJointType() const	{ return mCenterJointType; }
 
 	struct MergeParams {
+		//! Enable smooth filtering on body joints
 		MergeParams& smoothJoints( bool b )	{ mSmoothJoints = b; return *this; }
-		bool mSmoothJoints = true;
+		bool mSmoothJoints = false;
 	};
 
 	// TODO: add default params other than Body other

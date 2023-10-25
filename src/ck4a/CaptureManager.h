@@ -73,7 +73,7 @@ public:
 	double getMaxSecondsUntilBodyRemoved() const { return mMaxSecondsUntilBodyRemoved; }
 	float  getMaxBodyDistance() const	{ return mMaxBodyDistance; }
 
-	void update();
+	void update( double currentTime );
 
 	//! if enabled, will draw this capture device's UI to a separate window
 	void updateUI();
@@ -118,7 +118,7 @@ private:
 	void sendTestValue();
 	void sendMessage( const ci::osc::Message &msg );
 	void receiveBody( const ci::osc::Message &msg );
-	void mergeBodies();
+	void mergeBodies( double currentTime );
 
 	struct Host {
 		std::string mId;
@@ -143,8 +143,10 @@ private:
 	double	mMaxSecondsUntilBodyRemoved = 0.1f;
 	float	mMaxBodyDistance = 250;
 	double  mHeartbeatSeconds = 2;
+	float	mMergeBodySmoothingFactor = 0.5f; // TODO: right now anything > 0 enables, but make this a param for the amount
 	bool    mVerboseLogging = false;
-	DepthMode mDefaultDepthMode = DepthMode::WFovBinned;
+
+	DepthMode	mDefaultDepthMode = DepthMode::WFovBinned;
 
 	std::vector<Body>			mMergedBodies;
 	std::set<JointType>			mMergeResolveJoints;
