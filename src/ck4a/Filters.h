@@ -89,6 +89,9 @@ struct FilteredValue {
 	FilteredValue( float initialValue = T( 0 ) )
 		: mValue( initialValue )
 	{}
+	FilteredValue( float initialValue, double freq, T minCuttoff, T beta, T dcuttoff )
+		: mValue( initialValue ), mFilter( freq, minCuttoff, beta, dcuttoff )
+	{}
 
 	void set( const T &value )
 	{
@@ -111,6 +114,12 @@ using glm::vec3;
 struct FilteredVec3 {
 	FilteredVec3( const vec3 &initialValue = vec3( 0 ) )
 		: mX( initialValue.x ), mY( initialValue.y ), mZ( initialValue.z )
+	{}
+
+	FilteredVec3( const vec3 &initialValue, float freq, float minCuttoff, float beta, float dcuttoff )
+		: mX( initialValue.x, double(freq), minCuttoff, beta, dcuttoff ),
+		  mY( initialValue.y, double(freq), minCuttoff, beta, dcuttoff ),
+		  mZ( initialValue.z, double(freq), minCuttoff, beta, dcuttoff )		
 	{}
 
 	void set( const vec3 &v )

@@ -38,6 +38,13 @@ namespace ck4a {
 
 namespace {
 
+// https://cristal.univ-lille.fr/~casiez/1euro/
+// Defaults taken from InteractiveDemo (https://gery.casiez.net/1euro/InteractiveDemo/)
+float EUROFILTER_FREQUENCY = 25;	//! I think: Data update rate (called 'rate' in algorithm docs)
+float EUROFILTER_MINCUTOFF = 1;		//! Minimum cutoff frequency
+float EUROFILTER_BETA = 0.007f;		//! Cutoff slope.
+float EUROFILTER_DCUTOFF = 1;		//! Cutoff frequency for derivative
+
 bool sLogNetworkVerbose = false;
 
 void appendToMessage( osc::Message &msg, const vec3 &v )
@@ -383,6 +390,13 @@ void CaptureManager::mergeBodies( double currentTime )
 
 		auto bodiesA = device->getBodies();
 
+		// TODO: only update filters on the bodies that actually do the merging (the master set)
+		if( mBodyJointFiltersNeedInit ) {
+			for( auto &body : bodiesA ) {
+				body.initJointFilters( EUROFILTER_FREQUENCY, EUROFILTER_MINCUTOFF, EUROFILTER_BETA, EUROFILTER_DCUTOFF );
+			}
+		}
+
 #if DEBUG_BODY_UI
 		im::BulletText( "device index: %d, bodies: %d", deviceIndex , bodiesA.size() );
 		im::Indent();
@@ -404,7 +418,7 @@ void CaptureManager::mergeBodies( double currentTime )
 					// move the copied body into 'room space' and smooth if enabled
 					for( auto &joint : bodyCopy.mJoints ) {
 						joint.second.setPos( joint.second.getPos() + device->getPos() );
-						if( mMergeBodySmoothingFactor > 0 ) {
+						if( mMergeBodySmoothingEnabled ) {
 							joint.second.updateSmoothedPos( currentTime );
 						}
 					}
@@ -443,7 +457,7 @@ void CaptureManager::mergeBodies( double currentTime )
 						if( dist < mJointDistanceConsideredSame ) {
 							bodyMatched = true;
 							// merge the two bodies
-							auto mergeParams = Body::MergeParams().smoothJoints( mMergeBodySmoothingFactor > 0 ? true : false ); // TODO: pass in float instead
+							auto mergeParams = Body::MergeParams().smoothJoints( mMergeBodySmoothingEnabled );
 							bodyM.merge( bodyA, mergeParams, currentTime );
 #if DEBUG_BODY_UI
 							im::SameLine(); im::Text( "|merged|" );
@@ -458,7 +472,7 @@ void CaptureManager::mergeBodies( double currentTime )
 						string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
 						Body bodyCopy = bodyA;
 						bodyCopy.mId = key;
-						if( mMergeBodySmoothingFactor > 0 ) {
+						if( mMergeBodySmoothingEnabled ) {
 							// copy smoothed joint positions
 							for( auto &joint : bodyCopy.mJoints ) {
 								joint.second.setPos( joint.second.getPosFiltered() );
@@ -485,6 +499,7 @@ void CaptureManager::mergeBodies( double currentTime )
 #endif
 	}
 
+	mBodyJointFiltersNeedInit = false;
 	mMergedBodies.clear();
 	for( const auto &mp : matchedBodies ) {
 		mMergedBodies.push_back( mp.second );
@@ -897,7 +912,22 @@ void CaptureManager::updateUI()
 
 	im::Checkbox( "auto start", &mAutoStart );
 	im::Checkbox( "merge multi device", &mMergeMultiDevice );
-	im::DragFloat( "merge smoothing", &mMergeBodySmoothingFactor, 0.5f, 0.0001f, 1.0f );
+
+	if( im::CollapsingHeader( "Joint Filtering", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		im::Checkbox( "enabled##sjoint-smoothing", &mMergeBodySmoothingEnabled );
+		if( im::DragFloat( "1euro freq", &EUROFILTER_FREQUENCY, 0.5f, 0, 100 ) ) {
+			mBodyJointFiltersNeedInit = true;
+		}
+		if( im::SliderFloat( "1euro min cuttoff", &EUROFILTER_MINCUTOFF, 0, 10 ) ) {
+			mBodyJointFiltersNeedInit = true;
+		}
+		if( im::SliderFloat( "1euro beta", &EUROFILTER_BETA, 0, 1 ) ) {
+			mBodyJointFiltersNeedInit = true;
+		}
+		if( im::SliderFloat( "1euro dcutofff", &EUROFILTER_DCUTOFF, 0, 10 ) ) {
+			mBodyJointFiltersNeedInit = true;
+		}
+	}
 
 	// TODO: make these checkboxes (will need to re-init networking / devices)
 	im::Value( "networking enabled", mNetworkingEnabled );

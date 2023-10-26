@@ -177,8 +177,16 @@ class Body {
 		bool mSmoothJoints = false;
 	};
 
-	// TODO: add default params other than Body other
-	void			merge( const Body &other, const MergeParams &params, double currentTime );
+	void		merge( const Body &other, const MergeParams &params, double currentTime );
+
+	void		initJointFilters( float freq = 25, float minCutoff = 1, float beta = 0.007f, float dCuttoff = 1 );
+
+	// https://cristal.univ-lille.fr/~casiez/1euro/
+	// Defaults taken from InteractiveDemo (source: https://cristal.univ-lille.fr/~casiez/1euro/InteractiveDemo/filters.js)
+	float mJointFilterFreq		= 25;		//! I think: Data update rate (called 'rate' in algorithm docs)
+	float mJointFilterMinCutoff = 1;		//! Minimum cutoff frequency
+	float mJointFilterBeta		= 0.007;	//! Cutoff slope.
+	float mJointFilterDCuttoff	= 1;		//! Cutoff frequency for derivative
 
 	// TODO: remove friends / make data private.
 	// - will do after body resolving is fleshed out
@@ -193,7 +201,6 @@ class Body {
 	uint64_t			mFrameLastTracked = -1;
 	JointType			mCenterJointType = JointType::Unknown; // will pick another if this isn't present
 
-	// TODO: add 1euro filtering params here
 
 	std::map<JointType, Joint>	mJoints;
 };

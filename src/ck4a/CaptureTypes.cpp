@@ -21,6 +21,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "ck4a/CaptureTypes.h"
 #include "cinder/CinderAssert.h"
+#include "cinder/Log.h"
 
 #include <array>
 
@@ -63,6 +64,15 @@ void Body::merge( const Body &other, const MergeParams &params, double currentTi
 		if( params.mSmoothJoints ) {
 			joint.updateSmoothedPos( currentTime );
 		}
+	}
+}
+
+void Body::initJointFilters( float freq, float minCutoff, float beta, float dCuttoff )
+{
+	CI_LOG_I( "id: " << mId );
+
+	for( auto &kv : mJoints ) {
+		kv.second.mPosFiltered = FilteredVec3( kv.second.mPosFiltered.get(), freq, minCutoff, beta, dCuttoff );
 	}
 }
 

@@ -143,7 +143,8 @@ private:
 	double	mMaxSecondsUntilBodyRemoved = 0.1f;
 	float	mMaxBodyDistance = 250;
 	double  mHeartbeatSeconds = 2;
-	float	mMergeBodySmoothingFactor = 0.5f; // TODO: right now anything > 0 enables, but make this a param for the amount
+	bool	mMergeBodySmoothingEnabled = true;
+	bool	mBodyJointFiltersNeedInit = false;
 	bool    mVerboseLogging = false;
 
 	DepthMode	mDefaultDepthMode = DepthMode::WFovBinned;
