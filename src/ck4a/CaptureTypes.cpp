@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, Richard Eakin - All rights reserved.
+Copyright (c) 2020-23, Richard Eakin - All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided
 that the following conditions are met:
@@ -21,6 +21,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "ck4a/CaptureTypes.h"
 #include "cinder/CinderAssert.h"
+#include "cinder/Log.h"
 
 #include <array>
 
@@ -40,7 +41,7 @@ const Joint* Body::getJoint( JointType type ) const
 	return nullptr;
 }
 
-void Body::merge( const Body &other )
+void Body::merge( const Body &other, const MergeParams &params, double currentTime )
 {
 	for( auto &kv : mJoints ) {
 		auto &joint = kv.second;
@@ -60,6 +61,18 @@ void Body::merge( const Body &other )
 			}
 		}
 
+		if( params.mSmoothJoints ) {
+			joint.updateSmoothedPos( currentTime );
+		}
+	}
+}
+
+void Body::initJointFilters( float freq, float minCutoff, float beta, float dCuttoff )
+{
+	CI_LOG_I( "id: " << mId );
+
+	for( auto &kv : mJoints ) {
+		kv.second.mPosFiltered = FilteredVec3( kv.second.mPosFiltered.get(), freq, minCutoff, beta, dCuttoff );
 	}
 }
 
@@ -218,6 +231,11 @@ const std::vector<std::string>&	allJointNames()
 	}
 
 	return sJointNames;
+}
+
+void Joint::updateSmoothedPos( double currentTime )
+{
+	mPosFiltered.set( mPos, currentTime );
 }
 
 namespace {

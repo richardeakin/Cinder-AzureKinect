@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, Richard Eakin - All rights reserved.
+Copyright (c) 2020-23, Richard Eakin - All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided
 that the following conditions are met:
@@ -18,10 +18,6 @@ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABI
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 */
-
-#if defined( DC_DEBUG_RELEASE )
-#pragma optimize( "", off )
-#endif
 
 #include "ck4a/CaptureAzureKinect.h"
 #include "ck4a/CaptureManager.h"
@@ -1078,12 +1074,10 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		joint.mType = jointType; 
 		joint.mConfidence = (JointConfidence)jointKinect.confidence_level;
 
-		joint.mPos = toVec3( jointKinect.position );	
-		joint.mPos /= 10; // k4a uses millimeters for 3D joint positions, we use centimeters
-		//joint.mPos = vec3( vec4( joint.mPos, 1 ) * mOrientation ); // rotate relative to room
-
-		joint.mPos *= vec3( -1, -1, 1 ); // flip x and y axes
-		//joint.mPos += mPos; // translate relative to room
+		vec3 pos = toVec3( jointKinect.position );
+		pos /= 10; // k4a uses millimeters for 3D joint positions, we use centimeters
+		pos *= vec3( -1, -1, 1 ); // flip x and y axes
+		joint.setPos( pos );
 
 		// joint orientation:
 		// - start with an orientation to go from kinect camera -> opengl
@@ -1102,7 +1096,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		if( (int)joint.mConfidence >= (int)JointConfidence::Medium ) {
 			hasGoodJoint = true;
 			if( currentTime >= 0 ) {
-				joint.mMotionTrackerPos.storePos( joint.mPos, currentTime );
+				joint.mMotionTrackerPos.storePos( joint.getPos(), currentTime );
 				joint.mVelocity = joint.mMotionTrackerPos.calcVelocity();
 			}
 		}
@@ -1143,7 +1137,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 	}
 
 	auto center = body->getCenterJoint();
-	vec2 centerXZ( center->mPos.x, center->mPos.z );
+	vec2 centerXZ( center->getPos().x, center->getPos().z );
 	if( glm::length( centerXZ ) > maxDistance ) {
 		// center joint too far away, reject
 		return false;
@@ -1642,7 +1636,7 @@ void CaptureAzureKinect::updateUI()
 						im::Text( "%13s: confidence: %d,", joint.getTypeAsString(), (int)joint.mConfidence ); // TODO: make this lin the tree node
 						im::SameLine();
 						im::Text( "pos: [%+3.1f, %+3.1f, %+3.1f], vel: [%+4.2f, %+4.2f, %+4.2f], speed: %.2f",
-							joint.mPos.x, joint.mPos.y, joint.mPos.z,
+							joint.getPos().x, joint.getPos().y, joint.getPos().z,
 							joint.mVelocity.x, joint.mVelocity.y, joint.mVelocity.z,
 							glm::length( joint.mVelocity )
 						);

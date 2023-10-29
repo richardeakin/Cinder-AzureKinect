@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, Richard Eakin - All rights reserved.
+Copyright (c) 2020-23, Richard Eakin - All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided
 that the following conditions are met:
@@ -26,17 +26,21 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "glm/vec4.hpp"
 #include "glm/gtc/quaternion.hpp"
 
-#define DC_MOTION_TRACKING_ENABLED 1
-
-#if DC_MOTION_TRACKING_ENABLED
-#include "mason/MotionTracker.h"
-#endif
+#define CK4A_MOTION_TRACKING_ENABLED 1
+#define CK4A_JOINT_FILTERING_ENABLED 1
 
 #include <map>
 #include <string>
 
-#if defined( DC_DEBUG_RELEASE )
+#if defined( CK4A_DEBUG_RELEASE )
 #pragma optimize ( "", off )
+#endif
+
+#if CK4A_MOTION_TRACKING_ENABLED
+#include "mason/MotionTracker.h"
+#endif
+#if CK4A_JOINT_FILTERING_ENABLED
+#include "ck4a/Filters.h"
 #endif
 
 namespace ck4a {
@@ -110,12 +114,11 @@ struct Joint {
 	JointType		mType;
 	JointConfidence mConfidence;
 	bool			mActive = false;
-	vec3			mPos; //! cm
 	vec3			mVelocity; //! cm / s
 	quat			mOrientation;
 	double			mTimeFirstTracked = -1;
 
-#if DC_MOTION_TRACKING_ENABLED
+#if CK4A_MOTION_TRACKING_ENABLED
 	// TODO: consider moving this out of this lower layer and into the Gestures.cpp stuff
 	// - it's usually only used for a couple / few joints
 	ma::MotionTracker<vec3>		mMotionTrackerPos;
@@ -127,16 +130,32 @@ struct Joint {
 	const char*	getTypeAsString() const		{ return jointTypeAsString( mType ); }
 	JointType	getParentJointType() const	{ return ck4a::getParentJointType( mType ); }
 	vec3		getDir() const				{ return glm::normalize( vec3( mOrientation * glm::vec4( 0, 0, -1, 1 ) ) ); 	}
+	vec3		getPos() const				{ return mPos; }
+	vec3		getPosFiltered() const		{ return mPosFiltered.get(); }
 
-	bool	isHand() const { return mType == JointType::HandLeft || mType == JointType::HandRight; }
+	bool		isHand() const { return mType == JointType::HandLeft || mType == JointType::HandRight; }
 	// TODO: add for all left/right types
+
+	//! Set the joint position
+	void setPos( const vec3 &p )	{ mPos = p; }
+	//! Moves the joint position by the specified offset
+	void offsetPos( const vec3 &p )	{ mPos += p; }
+	//! Uses a 1euro filter to smooth joints
+	void updateSmoothedPos( double currentTime );
+private:
+
+	vec3			mPos;			//! cm TODO: make unit-agnostic at CaptureManager level
+#if CK4A_JOINT_FILTERING_ENABLED
+	FilteredVec3	mPosFiltered;
+#endif
+
+	friend class Body;
 };
 
 class Body {
   public:
 
 	const std::string&  getId() const					{ return mId; }
-	//int	  getIndex() const				{ return mIndex; }
 	bool  isActive() const				{ return mActive; }
 	float getDistanceToCamera() const	{ return mDistanceToCamera; }
 	//! Time the Body was first detected. 
@@ -152,7 +171,22 @@ class Body {
 	//!
 	JointType		getCenterJointType() const	{ return mCenterJointType; }
 
-	void			merge( const Body &other );
+	struct MergeParams {
+		//! Enable smooth filtering on body joints
+		MergeParams& smoothJoints( bool b )	{ mSmoothJoints = b; return *this; }
+		bool mSmoothJoints = false;
+	};
+
+	void		merge( const Body &other, const MergeParams &params, double currentTime );
+
+	void		initJointFilters( float freq = 25, float minCutoff = 1, float beta = 0.007f, float dCuttoff = 1 );
+
+	// https://cristal.univ-lille.fr/~casiez/1euro/
+	// Defaults taken from InteractiveDemo (source: https://cristal.univ-lille.fr/~casiez/1euro/InteractiveDemo/filters.js)
+	float mJointFilterFreq		= 25;		//! I think: Data update rate (called 'rate' in algorithm docs)
+	float mJointFilterMinCutoff = 1;		//! Minimum cutoff frequency
+	float mJointFilterBeta		= 0.007;	//! Cutoff slope.
+	float mJointFilterDCuttoff	= 1;		//! Cutoff frequency for derivative
 
 	// TODO: remove friends / make data private.
 	// - will do after body resolving is fleshed out
@@ -166,6 +200,7 @@ class Body {
 	double				mTimeLastTracked = -1;
 	uint64_t			mFrameLastTracked = -1;
 	JointType			mCenterJointType = JointType::Unknown; // will pick another if this isn't present
+
 
 	std::map<JointType, Joint>	mJoints;
 };
