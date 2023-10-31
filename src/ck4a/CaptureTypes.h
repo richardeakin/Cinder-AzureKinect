@@ -171,6 +171,9 @@ class Body {
 	//!
 	JointType		getCenterJointType() const	{ return mCenterJointType; }
 
+	//! Updates the center joint type
+	void updateCenterJointType();
+
 	struct MergeParams {
 		//! Enable smooth filtering on body joints
 		MergeParams& smoothJoints( bool b )	{ mSmoothJoints = b; return *this; }

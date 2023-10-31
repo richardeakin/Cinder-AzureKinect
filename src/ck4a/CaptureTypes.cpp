@@ -76,6 +76,31 @@ void Body::initJointFilters( float freq, float minCutoff, float beta, float dCut
 	}
 }
 
+void Body::updateCenterJointType()
+{
+	// pick a center joint based on what's present
+	// TODO: make this configurable (pass in candidates)
+	static std::vector<JointType> centerJointDandidates = {
+		ck4a::JointType::SpineNavel,
+		ck4a::JointType::Head,
+		ck4a::JointType::SpineChest,
+		ck4a::JointType::Neck
+	};
+
+	for( const auto &candidateType : centerJointDandidates ) {
+		// only use a candidate if the confidence is medium
+		auto jointIt = mJoints.find( candidateType );
+		if( jointIt != mJoints.end() && (int)jointIt->second.mConfidence >= (int)JointConfidence::Medium ) {
+			mCenterJointType = candidateType;
+			break;
+		}
+	}
+	if( mCenterJointType == JointType::Unknown ) {
+		mCenterJointType = mJoints.begin()->first;
+	}
+}
+
+
 //Rectf Body::calcBounds() const
 //{
 //	Rectf result = Rectf::zero();

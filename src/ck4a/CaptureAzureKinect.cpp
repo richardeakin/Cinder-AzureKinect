@@ -1109,27 +1109,9 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		return false;
 	}
 
-	// pick a center joint based on what's present
-	// TODO: make this configurable
-	static vector<JointType> centerJointDandidates = {
-		ck4a::JointType::SpineNavel,
-		ck4a::JointType::Head,
-		ck4a::JointType::SpineChest,
-		ck4a::JointType::Neck
-	};
+	body->updateCenterJointType();
 
-	for( const auto &candidateType : centerJointDandidates ) {
-		// only use a candidate if the confidence is medium
-		auto jointIt = body->mJoints.find( candidateType );
-		if( jointIt != body->mJoints.end() && (int)jointIt->second.mConfidence >= (int)JointConfidence::Medium ) {
-			body->mCenterJointType = candidateType;
-			break;
-		}
-	}
-	if( body->mCenterJointType == JointType::Unknown ) {
-		body->mCenterJointType = body->mJoints.begin()->first;
-	}
-
+	// TODO NEXT: check this isn't filtering out bodies
 	const float maxDistance = getManager()->getMaxBodyDistance(); // FIXME: how is this zero
 	if( maxDistance < 0 ) {
 		// max body distance filtering disabled, consider all bodies

@@ -501,8 +501,11 @@ void CaptureManager::mergeBodies( double currentTime )
 
 	mBodyJointFiltersNeedInit = false;
 	mMergedBodies.clear();
-	for( const auto &mp : matchedBodies ) {
+	for( auto &mp : matchedBodies ) {
 		mMergedBodies.push_back( mp.second );
+
+		auto &body = mMergedBodies.back();
+		body.updateCenterJointType();
 	}
 
 #if DEBUG_BODY_UI
