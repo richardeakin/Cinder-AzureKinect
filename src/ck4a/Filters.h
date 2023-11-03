@@ -25,6 +25,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "cinder/Vector.h"
 
+#define CK4A_FILTER_TYPE_NONE 0
+#define CK4A_FILTER_TYPE_LOWPASS 1
+#define CK4A_FILTER_TYPE_ONE_EURO 2
+
+#define CK4A_FILTER_TYPE 1
+
 namespace ck4a {
 
 template <typename T = double>
@@ -105,7 +111,12 @@ struct FilteredValue {
 	}
 
 	T mValue;
-	one_euro_filter<T, double>	mFilter;
+
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_LOWPASS )
+	low_pass_filter<float>			mFilter;
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+	one_euro_filter<float, double>	mFilter;
+#endif
 };
 
 // TODO: add overloads to FilteredValue that work for glm::vec types instead (currently only works for float and double)
