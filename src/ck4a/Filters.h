@@ -34,13 +34,18 @@ POSSIBILITY OF SUCH DAMAGE.
 namespace ck4a {
 
 template <typename T = double>
-struct low_pass_filter {
-	low_pass_filter() : hatxprev(0), xprev(0), hadprev(false) {}
-	T operator()(T x, T alpha) {
+struct FilterLowpass {
+	FilterLowpass()
+		: hatxprev( 0 ), xprev( 0 ), hadprev( false )
+	{}
+
+	T operator() ( T x, T alpha )
+	{
 		T hatx;
-		if(hadprev) {
-			hatx = alpha * x + (1-alpha) * hatxprev;
-		} else {
+ 		if( hadprev ) {
+			hatx = alpha * x + ( 1 - alpha ) * hatxprev;
+		}
+		else {
 			hatx = x;
 			hadprev = true;
 		}
@@ -54,25 +59,26 @@ struct low_pass_filter {
 };
 
 template <typename T = double, typename timestamp_t = double>
-struct one_euro_filter {
-	one_euro_filter(double _freq = 60.0, T _mincutoff = T(0), T _beta = T(0), T _dcutoff = T(0) )
-		: freq(_freq), mincutoff(_mincutoff), beta(_beta), dcutoff(_dcutoff), last_time_(-1)
+struct FilterOneEuro {
+	FilterOneEuro( double _freq = 60.0, T _mincutoff = T(0), T _beta = T(0), T _dcutoff = T(0) )
+		: freq( _freq ), mincutoff( _mincutoff ), beta( _beta ), dcutoff( _dcutoff ), last_time_( -1 )
 	{}
-	T operator()(T x, timestamp_t t = -1)
+	T operator() ( T x, timestamp_t t = -1 )
 	{
 		T dx = 0;
 
-		if(last_time_ != -1 && t != -1 && t != last_time_) {
+		if( last_time_ != -1 && t != -1 && t != last_time_ ) {
 			freq = 1.0 / (t - last_time_);
 		}
 		last_time_ = t;
 
-		if(xfilt_.hadprev)
+		if( xfilt_.hadprev ) {
 			dx = (x - xfilt_.xprev) * freq;
+		}
 
-		T edx = dxfilt_(dx, alpha(dcutoff));
-		T cutoff = mincutoff + beta * std::abs(static_cast<double>(edx));
-		return xfilt_(x, alpha(cutoff));
+		T edx = dxfilt_( dx, alpha( dcutoff ) );
+		T cutoff = mincutoff + beta * std::abs( static_cast<double>(edx) );
+		return xfilt_( x, alpha( cutoff ) );
 	}
 
 	double freq;
@@ -80,23 +86,27 @@ struct one_euro_filter {
 private:
 	T alpha(T cutoff)
 	{
-		T tau = 1.0 / (2 * M_PI * cutoff);
+		T tau = 1.0 / ( 2 * M_PI * cutoff );
 		T te = 1.0 / freq;
-		return 1.0 / (1.0 + tau / te);
+		return 1.0 / ( 1.0 + tau / te );
 	}
 
 	timestamp_t last_time_;
-	low_pass_filter<T> xfilt_, dxfilt_;
+	FilterLowpass<T> xfilt_, dxfilt_;
 };
 
 // TODO: add other constructor params
+// TODO: second template type to enable lowpass vs 1euro (will replace the macros)
 template <typename T>
 struct FilteredValue {
 	FilteredValue( float initialValue = T( 0 ) )
 		: mValue( initialValue )
 	{}
 	FilteredValue( float initialValue, double freq, T minCuttoff, T beta, T dcuttoff )
-		: mValue( initialValue ), mFilter( freq, minCuttoff, beta, dcuttoff )
+		: mValue( initialValue )
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+		, mFilter( freq, minCuttoff, beta, dcuttoff )
+#endif
 	{}
 
 	void set( const T &value )
@@ -105,18 +115,26 @@ struct FilteredValue {
 		// TODO: clear filter
 	}
 
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_LOWPASS )
+	FilterLowpass<float>			mFilter;
+
+	void set( const T &value, float alpha )
+	{
+		mValue = mFilter( value, alpha );
+	}
+
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+
+	FilterOneEuro<float, double>	mFilter;
+
 	void set( const T &value, double currentTime )
 	{
 		mValue = mFilter( value, currentTime );
 	}
 
-	T mValue;
-
-#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_LOWPASS )
-	low_pass_filter<float>			mFilter;
-#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
-	one_euro_filter<float, double>	mFilter;
 #endif
+
+	T mValue;
 };
 
 // TODO: add overloads to FilteredValue that work for glm::vec types instead (currently only works for float and double)
@@ -140,12 +158,21 @@ struct FilteredVec3 {
 		mZ.set( v.z );
 	}
 
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_LOWPASS )
+	void set( const vec3 &v, float alpha )
+	{
+		mX.set( v.x, alpha );
+		mY.set( v.y, alpha );
+		mZ.set( v.z, alpha );
+	}
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
 	void set( const vec3 &v, double currentTime )
 	{
 		mX.set( v.x, currentTime );
 		mY.set( v.y, currentTime );
 		mZ.set( v.z, currentTime );
 	}
+#endif
 
 	vec3 get() const
 	{

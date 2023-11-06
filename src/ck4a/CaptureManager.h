@@ -104,6 +104,8 @@ public:
 	//! Returns the merged bodies
 	const std::vector<Body>& getMergedBodies() const	{ return mMergedBodies; }
 
+	Body::SmoothParams getJointSmoothingParams() const;
+
 private:
 	// non-copyable
 	CaptureManager( const CaptureManager& ) = delete;

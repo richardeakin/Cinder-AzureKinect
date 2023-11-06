@@ -113,7 +113,7 @@ private:
 	//! where data processing takes place (async)
 	void process();
 	//! Returns true if this body should be considered valid
-	bool fillBodyFromSkeleton( Body *body, double currentTime );
+	bool fillBodyFromSkeleton( Body *body, double currentTime, const Body::SmoothParams &smoothParams );
 
 	struct Data;
 	std::unique_ptr<Data>	mData; //! contains azure-specific data

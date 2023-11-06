@@ -38,6 +38,8 @@ namespace ck4a {
 
 namespace {
 
+float LOWPASS_ALPHA = 0.2f;
+
 // https://cristal.univ-lille.fr/~casiez/1euro/
 // Defaults taken from InteractiveDemo (https://gery.casiez.net/1euro/InteractiveDemo/)
 float EUROFILTER_FREQUENCY = 25;	//! I think: Data update rate (called 'rate' in algorithm docs)
@@ -349,7 +351,7 @@ void CaptureManager::update( double currentTime )
 // Body Merging
 // ----------------------------------------------------------------------------------------------------
 
-#define DEBUG_BODY_UI 0
+#define DEBUG_BODY_UI 1
 
 string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId )
 {
@@ -379,7 +381,7 @@ void CaptureManager::mergeBodies( double currentTime )
 	// - only compare bodiesA to thoe from other devices
 
 #if DEBUG_BODY_UI
-	im::Begin( "Debug Resolve Bodies" );
+	im::Begin( "Debug Merge Bodies" );
 #endif
 
 	for( int deviceIndex = 0; deviceIndex < getNumDevices(); deviceIndex++ ) {
@@ -398,7 +400,9 @@ void CaptureManager::mergeBodies( double currentTime )
 		}
 
 #if DEBUG_BODY_UI
-		im::BulletText( "device index: %d, bodies: %d", deviceIndex , bodiesA.size() );
+		im::BulletText( "device index: %d, bodies: %d,", deviceIndex , bodiesA.size() );
+		im::SameLine();
+		imx::Value( "pos", device->getPos() );
 		im::Indent();
 #endif
 
@@ -410,17 +414,14 @@ void CaptureManager::mergeBodies( double currentTime )
 			const Joint *jointA = bodyA.getJoint( JointType::Head );
 			// if we have the main jointA, compare it to those in matchedBodies
 			if( jointA && (int)jointA->mConfidence >= (int)JointConfidence::Medium ) {
-				// if we're on the first device, just add these bodiesA to the map
-				if( deviceIndex == 0 ) {
+				// just add first body to the map
+				if( matchedBodies.empty() ) {
 					string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
 					Body bodyCopy = bodyA;
 					bodyCopy.mId = key;
 					// move the copied body into 'room space' and smooth if enabled
 					for( auto &joint : bodyCopy.mJoints ) {
 						joint.second.setPos( joint.second.getPos() + device->getPos() );
-						if( mMergeBodySmoothingEnabled ) {
-							joint.second.updateSmoothedPos( currentTime );
-						}
 					}
 					auto resultIt = matchedBodies.insert( { key, bodyCopy } );
 					CI_VERIFY( resultIt.second );
@@ -457,8 +458,7 @@ void CaptureManager::mergeBodies( double currentTime )
 						if( dist < mJointDistanceConsideredSame ) {
 							bodyMatched = true;
 							// merge the two bodies
-							auto mergeParams = Body::MergeParams().smoothJoints( mMergeBodySmoothingEnabled );
-							bodyM.merge( bodyA, mergeParams, currentTime );
+							bodyM.merge( bodyA, currentTime );
 #if DEBUG_BODY_UI
 							im::SameLine(); im::Text( "|merged|" );
 #endif
@@ -505,7 +505,7 @@ void CaptureManager::mergeBodies( double currentTime )
 		mMergedBodies.push_back( mp.second );
 
 		auto &body = mMergedBodies.back();
-		body.updateCenterJointType();
+		//body.updateCenterJointType();
 	}
 
 #if DEBUG_BODY_UI
@@ -515,6 +515,11 @@ void CaptureManager::mergeBodies( double currentTime )
 
 	im::End();
 #endif
+}
+
+Body::SmoothParams CaptureManager::getJointSmoothingParams() const
+{
+	return Body::SmoothParams().smoothJoints( mMergeBodySmoothingEnabled ).lowpassAlpha( LOWPASS_ALPHA );
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -929,6 +934,9 @@ void CaptureManager::updateUI()
 		}
 		if( im::SliderFloat( "1euro dcutofff", &EUROFILTER_DCUTOFF, 0, 10 ) ) {
 			mBodyJointFiltersNeedInit = true;
+		}
+		if( im::SliderFloat( "lowpass alpha", &LOWPASS_ALPHA, 0, 1 ) ) {
+			//mBodyJointFiltersNeedInit = true;
 		}
 	}
 

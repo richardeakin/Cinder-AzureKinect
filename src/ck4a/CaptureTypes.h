@@ -171,18 +171,20 @@ class Body {
 	//!
 	JointType		getCenterJointType() const	{ return mCenterJointType; }
 
-	//! Updates the center joint type
-	void updateCenterJointType();
 
-	struct MergeParams {
+	struct SmoothParams {
 		//! Enable smooth filtering on body joints
-		MergeParams& smoothJoints( bool b )	{ mSmoothJoints = b; return *this; }
-		bool mSmoothJoints = false;
+		SmoothParams& smoothJoints( bool b )		{ mSmoothJoints = b; return *this; }
+		SmoothParams& lowpassAlpha( float a )	{ mLowPassAlpha = a; return *this; }
+
+		bool	mSmoothJoints = false;
+		float	mLowPassAlpha = 0.5f;
 	};
 
-	void		merge( const Body &other, const MergeParams &params, double currentTime );
-
+	//! Updates the joint smoothing and other stuff
+	void		update( double currentTime, const SmoothParams &params  );
 	void		initJointFilters( float freq = 25, float minCutoff = 1, float beta = 0.007f, float dCuttoff = 1 );
+	void		merge( const Body &other, double currentTime );
 
 	// https://cristal.univ-lille.fr/~casiez/1euro/
 	// Defaults taken from InteractiveDemo (source: https://cristal.univ-lille.fr/~casiez/1euro/InteractiveDemo/filters.js)

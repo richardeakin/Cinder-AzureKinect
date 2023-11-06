@@ -41,7 +41,7 @@ const Joint* Body::getJoint( JointType type ) const
 	return nullptr;
 }
 
-void Body::merge( const Body &other, const MergeParams &params, double currentTime )
+void Body::merge( const Body &other, double currentTime )
 {
 	for( auto &kv : mJoints ) {
 		auto &joint = kv.second;
@@ -60,10 +60,6 @@ void Body::merge( const Body &other, const MergeParams &params, double currentTi
 				joint.mOrientation = otherJoint->mOrientation;
 			}
 		}
-
-		if( params.mSmoothJoints ) {
-			joint.updateSmoothedPos( currentTime );
-		}
 	}
 }
 
@@ -76,7 +72,7 @@ void Body::initJointFilters( float freq, float minCutoff, float beta, float dCut
 	}
 }
 
-void Body::updateCenterJointType()
+void Body::update( double currentTime, const SmoothParams &params )
 {
 	// pick a center joint based on what's present
 	// TODO: make this configurable (pass in candidates)
@@ -98,6 +94,18 @@ void Body::updateCenterJointType()
 	if( mCenterJointType == JointType::Unknown ) {
 		mCenterJointType = mJoints.begin()->first;
 	}
+
+	if( params.mSmoothJoints ) {
+		for( auto &kv : mJoints ) {
+			auto &joint = kv.second;
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+			joint.updateSmoothedPos( currentTime );
+#else
+			joint.updateSmoothedPos( params.mLowPassAlpha );
+#endif
+		}
+	}
+
 }
 
 

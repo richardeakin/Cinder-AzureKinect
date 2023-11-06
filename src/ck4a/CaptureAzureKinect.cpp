@@ -1005,7 +1005,7 @@ void CaptureAzureKinect::process()
 					body->mTimeLastTracked = getManager()->getCurrentTime();
 					body->mFrameLastTracked = mCurrentBodyFrame;
 
-					if( fillBodyFromSkeleton( body, currentTime ) ) {
+					if( fillBodyFromSkeleton( body, currentTime, getManager()->getJointSmoothingParams() ) ) {
 						getManager()->sendBodyTracked( this, *body );
 					}
 					else{
@@ -1058,7 +1058,7 @@ void CaptureAzureKinect::process()
 
 // Returns false if the body should be rejected.
 // info on Azure Kinect coordinate space: https://docs.microsoft.com/en-us/azure/kinect-dk/coordinate-systems
-bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
+bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime, const Body::SmoothParams &smoothParams )
 {
 	CI_ASSERT( ! body->mId.empty() );
 
@@ -1109,7 +1109,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime )
 		return false;
 	}
 
-	body->updateCenterJointType();
+	body->update( currentTime, smoothParams );
 
 	// TODO NEXT: check this isn't filtering out bodies
 	const float maxDistance = getManager()->getMaxBodyDistance(); // FIXME: how is this zero
@@ -1260,7 +1260,7 @@ void CaptureAzureKinect::update()
 			auto &body = it->second;
 			if( mPaused ) {
 				// re-fill body data so the data is using the latest params (calibration, etc)
-				if( ! fillBodyFromSkeleton( &body, -1.0 ) ) {
+				if( ! fillBodyFromSkeleton( &body, -1.0, getManager()->getJointSmoothingParams() ) ) {
 					LOG_CAPTURE_V( "(" << mId << ") body with id: " << it->first << " rejected." );
 					it = mBodies.erase( it );
 				}
