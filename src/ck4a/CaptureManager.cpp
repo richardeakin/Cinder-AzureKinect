@@ -49,6 +49,9 @@ float EUROFILTER_DCUTOFF = 1;		//! Cutoff frequency for derivative
 
 bool sLogNetworkVerbose = false;
 
+static bool sLockCenterZ = true;
+static float sLockedCenterZ = 0;
+
 void appendToMessage( osc::Message &msg, const vec3 &v )
 {
 	msg.append( v.x );
@@ -412,8 +415,15 @@ void CaptureManager::mergeBodies( double currentTime )
 			//    - this effectively binning the bodies relative to their head
 			//    - or use the body's center pos
 			const Joint *jointA = bodyA.getJoint( JointType::Head );
+			CI_ASSERT( jointA );
+			auto centerA = bodyA.getCenterJoint();
+			CI_ASSERT( centerA );
+
 			// if we have the main jointA, compare it to those in matchedBodies
 			if( jointA && (int)jointA->mConfidence >= (int)JointConfidence::Medium ) {
+				float zdiff = sLockedCenterZ - ( jointA->getPos().z + device->getPos().z );
+				//zdiff *= -1;
+
 				// just add first body to the map
 				if( matchedBodies.empty() ) {
 					string key = makeMergedBodyKey( device->getId(), bodyA.getId() );
@@ -421,13 +431,18 @@ void CaptureManager::mergeBodies( double currentTime )
 					bodyCopy.mId = key;
 					// move the copied body into 'room space' and smooth if enabled
 					for( auto &joint : bodyCopy.mJoints ) {
-						joint.second.setPos( joint.second.getPos() + device->getPos() );
+						// TODO NEXT: lock z if chosen
+						vec3 jp = joint.second.getPos() + device->getPos();
+						if( sLockCenterZ ) {
+							jp.z += zdiff;
+						}
+						joint.second.setPos( jp );
 					}
 					auto resultIt = matchedBodies.insert( { key, bodyCopy } );
 					CI_VERIFY( resultIt.second );
 
 #if DEBUG_BODY_UI
-					im::BulletText( "added body with key: %s", key.c_str() );
+					im::BulletText( "added body with key: %s, zdiff: %0.3f", key.c_str(), zdiff );
 #endif
 				}
 				else {
@@ -445,6 +460,9 @@ void CaptureManager::mergeBodies( double currentTime )
 
 						// TODO (callib): multiply this by device transform instead of pos
 						vec3 posA = jointA->getPos() + device->getPos();
+						if( sLockCenterZ ) {
+							posA.z += zdiff;
+						}
 						vec3 posM = jointM->getPos(); // this has already been transformed
 						float dist = glm::distance( posA, posM );
 						Color col( 1, 1, 1 );
@@ -490,7 +508,7 @@ void CaptureManager::mergeBodies( double currentTime )
 			}
 			else {
 				// main jointA not present
-				// TODO: disregard this bodyA as a candidate?
+				// TODO: improve joint testing (build more candidates)
 
 			}
 		}
@@ -920,6 +938,8 @@ void CaptureManager::updateUI()
 
 	im::Checkbox( "auto start", &mAutoStart );
 	im::Checkbox( "merge multi device", &mMergeMultiDevice );
+	im::Checkbox( "center z locked", &sLockCenterZ );
+	im::DragFloat( "center z", &sLockedCenterZ, 0.01f, -10, 10 );
 
 	if( im::CollapsingHeader( "Joint Filtering", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		im::Checkbox( "enabled##sjoint-smoothing", &mMergeBodySmoothingEnabled );
