@@ -81,6 +81,7 @@ void CaptureManager::init( const ma::Info& info )
 	mMaxBodyDistance = info.get( "maxBodyDistance", mMaxBodyDistance );
 	mMergeMultiDevice = info.get( "mergeMultiDevice", mMergeMultiDevice );
 	mJointDistanceConsideredSame = info.get( "jointMatchMaxDistance", mJointDistanceConsideredSame );
+	sLockCenterZ = info.get( "lockBodyCenterZ", sLockCenterZ );
 
 	// parse hosts
 	mNetworkingEnabled = info.get<bool>( "networkingEnabled", mNetworkingEnabled );
@@ -177,6 +178,7 @@ void CaptureManager::save( ma::Info& info ) const
 	info["maxBodyDistance"] = mMaxBodyDistance;
 	info["mergeMultiDevice"] = mMergeMultiDevice;
 	info["jointMatchMaxDistance"] = mJointDistanceConsideredSame;
+	info["lockBodyCenterZ"] = sLockCenterZ;
 	// TODO: save out depthMode, but make sure that it doesn't override a device depthMode if it wasn't originally specified
 
 	std::vector<ma::Info> devices;
