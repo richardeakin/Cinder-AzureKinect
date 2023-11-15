@@ -585,58 +585,60 @@ void CaptureManager::initNetworking()
 
 	const auto &host = mHosts[hostIndex];
 
-	// init OSC Receiver
-	try {
-		mOSCReceiver = make_unique<osc::ReceiverUdp>( host.mReceivePort );
-
-		initOSCListeners();
-
-		mOSCReceiver->bind(); // note to self, bind() must be called before listen()..
-
-		// UDP opens the socket and "listens" accepting any message from any endpoint. The listen
-		// function takes an error handler for the underlying socket. Any errors that would
-		// call this function are because of problems with the socket or with the remote message.
-		mOSCReceiver->listen(
-			[host]( asio::error_code error, asio::ip::udp::endpoint endpoint ) -> bool {
-			if( error ) {
-				CI_LOG_E( "Error Listening: " << error.message() << " val: " << error.value() << " endpoint: " << endpoint );
-				return false;
-			}
-			else {
-				// I'm not sure if this can ever happen, but I'm logging it anyway
-				CI_LOG_W( "(" << host.mId << ") received error message from endpoint: " << endpoint << ", but missing asio error.." );
-				return true;
-			}
-		} );
-
-		CI_LOG_I( "connected receiver for host (" << host.mId << ") to port: " << host.mReceivePort );
-	}
-	catch( exception &exc ) {
-		CI_LOG_EXCEPTION( "Failed to init OSC Receiver for host (" << host.mId << ") on port: " << host.mReceivePort, exc );
-	}
-
 	if( mMasterHost ) {
+		// init OSC Receiver for master <- subordinates
+		try {
+			mOSCReceiver = make_unique<osc::ReceiverUdp>( host.mReceivePort );
+
+			initOSCListeners();
+
+			mOSCReceiver->bind(); // note to self, bind() must be called before listen()..
+
+			// UDP opens the socket and "listens" accepting any message from any endpoint. The listen
+			// function takes an error handler for the underlying socket. Any errors that would
+			// call this function are because of problems with the socket or with the remote message.
+			mOSCReceiver->listen(
+				[host]( asio::error_code error, asio::ip::udp::endpoint endpoint ) -> bool {
+				if( error ) {
+					CI_LOG_E( "Error Listening: " << error.message() << " val: " << error.value() << " endpoint: " << endpoint );
+					return false;
+				}
+				else {
+					// I'm not sure if this can ever happen, but I'm logging it anyway
+					CI_LOG_W( "(" << host.mId << ") received error message from endpoint: " << endpoint << ", but missing asio error.." );
+					return true;
+				}
+			} );
+
+			CI_LOG_I( "connected receiver for host (" << host.mId << ") to port: " << host.mReceivePort );
+		}
+		catch( exception &exc ) {
+			CI_LOG_EXCEPTION( "Failed to init OSC Receiver for host (" << host.mId << ") on port: " << host.mReceivePort, exc );
+		}
+
+
 		// init OSC Sender - master to subordinate
+		// TODO: necessary for master to talk to clients?
 		// TODO: broadcast
 
 		// hard-coding dest. host / port for the moment
-		const std::string destinationHost = "127.0.0.1";
-		const uint16_t destinationPort = 10001;
+		//const std::string destinationHost = "127.0.0.1";
+		//const uint16_t destinationPort = 10001;
 
-		try {
-			//mOSCSender = make_unique<osc::SenderUdp>( host.mReceivePort, destinationHost, destinationPort );
-			mOSCSender = make_unique<osc::SenderUdp>( 0, destinationHost, destinationPort );
-			mOSCSender->bind();
+		//try {
+		//	//mOSCSender = make_unique<osc::SenderUdp>( host.mReceivePort, destinationHost, destinationPort );
+		//	mOSCSender = make_unique<osc::SenderUdp>( 0, destinationHost, destinationPort );
+		//	mOSCSender->bind();
 
-			CI_LOG_I( "connected master OSC Sender (" << mHostId << ") sender" );
-		}
-		catch( exception &exc ) {
-			CI_LOG_EXCEPTION( "(" << mHostId << ") Failed to init OSC Sender", exc );
-		}
+		//	CI_LOG_I( "connected master OSC Sender (" << mHostId << ") sender" );
+		//}
+		//catch( exception &exc ) {
+		//	CI_LOG_EXCEPTION( "(" << mHostId << ") Failed to init OSC Sender", exc );
+		//}
 
 	}
 	else {
-		// init OSC Sender - subordinate to master
+		// subordinates: init OSC Sender to master
 		const auto &masterHost = mHosts[masterHostIndex];
 		try {
 			mOSCSender = make_unique<osc::SenderUdp>( 0, masterHost.mIpAddress, masterHost.mReceivePort );
