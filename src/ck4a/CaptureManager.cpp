@@ -433,7 +433,6 @@ void CaptureManager::mergeBodies( double currentTime )
 					bodyCopy.mId = key;
 					// move the copied body into 'room space' and smooth if enabled
 					for( auto &joint : bodyCopy.mJoints ) {
-						// TODO NEXT: lock z if chosen
 						vec3 jp = joint.second.getPos() + device->getPos();
 						if( sLockCenterZ ) {
 							jp.z += zdiff;
@@ -844,6 +843,8 @@ void CaptureManager::receiveBody( const osc::Message &msg )
 
 		body.mJoints[joint.mType] = joint;
 	}
+
+	body.update( body.mTimeFirstTracked );
 
 	LOG_NETWORK_V( "\t- inserting body with device id: " << deviceId << ", bodyId: " << body.mId << ", num joints: " << body.mJoints.size() );
 

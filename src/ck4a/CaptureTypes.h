@@ -182,7 +182,7 @@ class Body {
 	};
 
 	//! Updates the joint smoothing and other stuff
-	void		update( double currentTime, const SmoothParams &params  );
+	void		update( double currentTime, const SmoothParams &params = SmoothParams() );
 	void		initJointFilters( float freq = 25, float minCutoff = 1, float beta = 0.007f, float dCuttoff = 1 );
 	void		merge( const Body &other, double currentTime );
 
