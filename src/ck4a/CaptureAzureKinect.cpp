@@ -386,6 +386,8 @@ void AzureKinectManager::onLogMessage( void *context, k4a_log_level_t level, con
 	auto cinderLevel = k4aLogLevelToCinder( level );
 	ci::log::Entry( cinderLevel, ci::log::Location( CINDER_CURRENT_FUNCTION, file, line ) ) << message;
 	if( (int)cinderLevel == (int)ci::log::LEVEL_ERROR ) {
+		// TODO: stop() here, will try to auto-restart later stop()
+		// - perhaps after a certain number of errors?
 		int blarg = 2;
 	}
 }
@@ -1106,13 +1108,14 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime, c
 
 	if( ! hasGoodJoint ) {
 		// no good joint found, reject
+		CI_LOG_W( "body doesn't have good joint" );
 		return false;
 	}
 
 	body->update( currentTime, smoothParams );
 
 	// TODO NEXT: check this isn't filtering out bodies
-	const float maxDistance = getManager()->getMaxBodyDistance(); // FIXME: how is this zero
+	const float maxDistance = getManager()->getMaxBodyDistance();
 	if( maxDistance < 0 ) {
 		// max body distance filtering disabled, consider all bodies
 		return true;
@@ -1122,6 +1125,7 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime, c
 	vec2 centerXZ( center->getPos().x, center->getPos().z );
 	if( glm::length( centerXZ ) > maxDistance ) {
 		// center joint too far away, reject
+		CI_LOG_W( "center joint too far away, reject" );
 		return false;
 	}
 

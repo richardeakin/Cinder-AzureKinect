@@ -31,6 +31,8 @@ using namespace ci;
 using namespace std;
 namespace im = ImGui;
 
+#define DEBUG_BODY_UI 0
+
 #define LOG_NETWORK_V( stream )	{ if( sLogNetworkVerbose ) {	CI_LOG_I( "|v| " << stream ); } }
 //#define LOG_NETWORK_V( stream )	( (void)( 0 ) )
 
@@ -356,8 +358,6 @@ void CaptureManager::update( double currentTime )
 // Body Merging
 // ----------------------------------------------------------------------------------------------------
 
-#define DEBUG_BODY_UI 1
-
 string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId )
 {
 	return deviceId + "-" + bodyId;
@@ -382,8 +382,8 @@ void CaptureManager::mergeBodies( double currentTime )
 	map<std::string, Body> matchedBodies;
 
 	// match up the bodiesA from multiple cameras
-	// - their current ids don't mean anything, will have to asign new ones
-	// - only compare bodiesA to thoe from other devices
+	// - their current ids don't mean anything, will have to assign new ones
+	// - only compare bodiesA to the from other devices
 
 #if DEBUG_BODY_UI
 	im::Begin( "Debug Merge Bodies" );
