@@ -99,8 +99,11 @@ public:
 
 	void sendBodyTracked( const CaptureDevice *device, Body body );
 
+	bool isFilterEnabled() const { return mFilterEnabled; }
 	//! Returns where the bodies from multiple devices will be merged each update.
 	bool isMergeMultiDeviceEnabled() const { return mMergeMultiDevice; }
+	//! Returns the filtered bodies, may contain duplicates
+	const std::vector<Body>& getFilteredBodies() const { return mFilteredBodies; }
 	//! Returns the merged bodies
 	const std::vector<Body>& getMergedBodies() const	{ return mMergedBodies; }
 
@@ -120,6 +123,7 @@ private:
 	void sendTestValue();
 	void sendMessage( const ci::osc::Message &msg );
 	void receiveBody( const ci::osc::Message &msg );
+	void filterBodies();
 	void mergeBodies( double currentTime );
 
 	struct Host {
@@ -140,6 +144,7 @@ private:
 	bool    mPaused = false; //! If true, will leave devices open but data will not be updated (for development)
 	bool	mUIEnabled = true;
 	bool    mSyncDevicesEnabled = false;
+	bool	mFilterEnabled { true };
 	bool	mMergeMultiDevice = false; //! If true, merges bodies from multiple devices into one container, stored on CaptureManager
 	float	mJointDistanceConsideredSame = 15;
 	double	mMaxSecondsUntilBodyRemoved = 0.1f;
@@ -151,6 +156,7 @@ private:
 
 	DepthMode	mDefaultDepthMode = DepthMode::WFovBinned;
 
+	std::vector<Body>			mFilteredBodies;
 	std::vector<Body>			mMergedBodies;
 	std::set<JointType>			mMergeResolveJoints;
 

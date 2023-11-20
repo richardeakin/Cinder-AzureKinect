@@ -49,6 +49,9 @@ float EUROFILTER_MINCUTOFF = 1;		//! Minimum cutoff frequency
 float EUROFILTER_BETA = 0.007f;		//! Cutoff slope.
 float EUROFILTER_DCUTOFF = 1;		//! Cutoff frequency for derivative
 
+float DEADBAND_WIDTH = 2.0f;				//! Movement sensitivity threshold in cm
+float DEADBAND_INTERPOLATION_SPEED = 0.5f;	//! Interp speed
+
 bool sLogNetworkVerbose = false;
 
 static bool sLockCenterZ = true;
@@ -349,9 +352,82 @@ void CaptureManager::update( double currentTime )
 		device->update();
 	}
 
-	if( mMergeMultiDevice ) {
+	filterBodies();
+
+	if ( mMergeMultiDevice ) {
 		mergeBodies( currentTime );
+	} else {
+
 	}
+}
+
+// ----------------------------------------------------------------------------------------------------
+// Apply body filtering, or just copy device body
+// ----------------------------------------------------------------------------------------------------
+
+void CaptureManager::filterBodies()
+{
+	auto getDeviceTransform = [ & ]( const ck4a::CaptureAzureKinectRef& device )
+	{
+		glm::mat4 t {};
+		t = glm::translate( t, device->getPos() );
+		t = t * glm::mat4 { device->getOrientation() };
+		return t;
+	};
+
+	if ( !mFilterEnabled ) {
+		mFilteredBodies.clear();
+		for ( int deviceIndex { 0 }; deviceIndex < getNumDevices(); deviceIndex++ ) {
+			const auto& device { mCaptureDevices[ deviceIndex ] };
+			if ( !device->isEnabled() ) {
+				continue;
+			}
+
+			glm::mat4 t { getDeviceTransform( device ) };
+			vector<ck4a::Body> bodies { device->getBodies() };
+			for ( ck4a::Body body : bodies ) {
+				body.transform( t );
+				mFilteredBodies.push_back( body );
+			}
+		}
+		return;
+	}
+
+	vector<ck4a::Body> filteredBodies {};
+	for ( int deviceIndex { 0 }; deviceIndex < getNumDevices(); deviceIndex++ ) {
+		const auto& device { mCaptureDevices[ deviceIndex ] };
+		if ( !device->isEnabled() ) {
+			continue;
+		}
+
+		vector<ck4a::Body> bodies { device->getBodies() };
+		if ( mBodyJointFiltersNeedInit ) {
+			for ( auto& body : bodies ) {
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+				body.initJointFilters( EUROFILTER_FREQUENCY, EUROFILTER_MINCUTOFF, EUROFILTER_BETA, EUROFILTER_DCUTOFF );
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+				body.initJointFilters( DEADBAND_WIDTH, DEADBAND_INTERPOLATION_SPEED );
+#endif
+			}
+		}
+
+		glm::mat4 t { getDeviceTransform( device ) };
+		for ( ck4a::Body body : bodies ) {
+			body.transform( t );
+		}
+		for ( ck4a::Body& a : bodies ) {
+			for ( ck4a::Body& b : mFilteredBodies ) {
+				if ( a.getId() == b.getId() ) {
+					b.merge( a );
+					a = b;
+					a.update( 0, ck4a::Body::SmoothParams { }.smoothJoints( true ) );
+					break;
+				}
+			}
+			filteredBodies.push_back( a );
+		}
+	}
+	mFilteredBodies = filteredBodies;
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -365,6 +441,8 @@ string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId 
 
 void CaptureManager::mergeBodies( double currentTime )
 {
+	// TODO because bodies have been transformed
+
 	CI_PROFILE_CPU( "CaptureManager::mergeBodies" );
 
 	mMergeResolveJoints = {
@@ -400,7 +478,11 @@ void CaptureManager::mergeBodies( double currentTime )
 		// TODO: only update filters on the bodies that actually do the merging (the master set)
 		if( mBodyJointFiltersNeedInit ) {
 			for( auto &body : bodiesA ) {
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
 				body.initJointFilters( EUROFILTER_FREQUENCY, EUROFILTER_MINCUTOFF, EUROFILTER_BETA, EUROFILTER_DCUTOFF );
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+				body.initJointFilters( DEADBAND_WIDTH, DEADBAND_INTERPOLATION_SPEED );
+#endif
 			}
 		}
 
@@ -477,7 +559,7 @@ void CaptureManager::mergeBodies( double currentTime )
 						if( dist < mJointDistanceConsideredSame ) {
 							bodyMatched = true;
 							// merge the two bodies
-							bodyM.merge( bodyA, currentTime );
+							bodyM.merge( bodyA );
 #if DEBUG_BODY_UI
 							im::SameLine(); im::Text( "|merged|" );
 #endif
@@ -948,6 +1030,9 @@ void CaptureManager::updateUI()
 
 	if( im::CollapsingHeader( "Joint Filtering", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 		im::Checkbox( "enabled##sjoint-smoothing", &mMergeBodySmoothingEnabled );
+#if ( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_LOWPASS )
+		im::SliderFloat( "lowpass alpha", &LOWPASS_ALPHA, 0, 1 );
+#elif ( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
 		if( im::DragFloat( "1euro freq", &EUROFILTER_FREQUENCY, 0.5f, 0, 100 ) ) {
 			mBodyJointFiltersNeedInit = true;
 		}
@@ -960,10 +1045,16 @@ void CaptureManager::updateUI()
 		if( im::SliderFloat( "1euro dcutofff", &EUROFILTER_DCUTOFF, 0, 10 ) ) {
 			mBodyJointFiltersNeedInit = true;
 		}
-		if( im::SliderFloat( "lowpass alpha", &LOWPASS_ALPHA, 0, 1 ) ) {
-			//mBodyJointFiltersNeedInit = true;
+#elif ( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+		if ( im::DragFloat( "deadband width", &DEADBAND_WIDTH, 1.0f, 0.0f, 1000.0f, "%.6f" ) ) {
+			mBodyJointFiltersNeedInit = true;
 		}
+		if ( im::DragFloat( "deadband interp", &DEADBAND_INTERPOLATION_SPEED, 1.0f, 0.0f, 1.0f, "%.6f" ) ) {
+			mBodyJointFiltersNeedInit = true;
+		}
+#endif
 	}
+
 
 	// TODO: make these checkboxes (will need to re-init networking / devices)
 	im::Value( "networking enabled", mNetworkingEnabled );

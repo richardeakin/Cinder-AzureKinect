@@ -28,8 +28,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #define CK4A_FILTER_TYPE_NONE 0
 #define CK4A_FILTER_TYPE_LOWPASS 1
 #define CK4A_FILTER_TYPE_ONE_EURO 2
+#define CK4A_FILTER_TYPE_DEADBAND 3
 
-#define CK4A_FILTER_TYPE 1
+#define CK4A_FILTER_TYPE 3
 
 namespace ck4a {
 
@@ -95,6 +96,28 @@ private:
 	FilterLowpass<T> xfilt_, dxfilt_;
 };
 
+template <typename T = double>
+class FilterDeadband {
+public:
+	FilterDeadband( T _deadbandWidth = (T)0.1f, T _interpolationSpeed = (T)0.5f )
+		: deadbandWidth { _deadbandWidth },
+		interpolationSpeed { _interpolationSpeed },
+		mPrev { (T)0 } {
+	}
+
+	T operator() ( T x ) {
+		if ( glm::distance2( x, mPrev ) >= deadbandWidth * deadbandWidth ) {
+			mPrev = glm::mix( mPrev, x, interpolationSpeed );
+		}
+		return mPrev;
+	}
+
+	T deadbandWidth;
+	T interpolationSpeed;
+private:
+	T mPrev;
+};
+
 // TODO: add other constructor params
 // TODO: second template type to enable lowpass vs 1euro (will replace the macros)
 template <typename T>
@@ -108,12 +131,6 @@ struct FilteredValue {
 		, mFilter( freq, minCuttoff, beta, dcuttoff )
 #endif
 	{}
-
-	void set( const T &value )
-	{
-		mValue = value;
-		// TODO: clear filter
-	}
 
 #if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_LOWPASS )
 	FilterLowpass<float>			mFilter;
@@ -132,6 +149,23 @@ struct FilteredValue {
 		mValue = mFilter( value, currentTime );
 	}
 
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+	
+	FilterDeadband<float>	mFilter;
+
+	void set( const T value )
+	{
+		mValue = mFilter( value );
+	}
+
+#else
+
+	void set( const T& value )
+	{
+		mValue = value;
+		// TODO: clear filter
+	}
+
 #endif
 
 	T mValue;
@@ -139,6 +173,7 @@ struct FilteredValue {
 
 // TODO: add overloads to FilteredValue that work for glm::vec types instead (currently only works for float and double)
 using glm::vec3;
+using glm::quat;
 
 struct FilteredVec3 {
 	FilteredVec3( const vec3 &initialValue = vec3( 0 ) )

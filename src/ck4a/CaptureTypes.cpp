@@ -41,23 +41,34 @@ const Joint* Body::getJoint( JointType type ) const
 	return nullptr;
 }
 
-void Body::merge( const Body &other, double currentTime )
+void Body::transform( const glm::mat4& matrix )
+{
+	for ( auto& kv : mJoints ) {
+		auto& joint = kv.second;
+		joint.mPos = vec3 { matrix * glm::vec4 { joint.getPos(), 1.0f } };
+	}
+}
+
+void Body::merge( const Body &other )
 {
 	for( auto &kv : mJoints ) {
 		auto &joint = kv.second;
 		const Joint *otherJoint = other.getJoint( joint.mType );
 		if( otherJoint ) {
+
+			static const float t { 0.021f };
+
 			// if two joints are the same confidence, mix them
 			// otherwise use the one with higher confidence
 			if( otherJoint->mConfidence == joint.mConfidence ) {
-				joint.mPos = glm::mix( joint.mPos, otherJoint->mPos, 0.5f );
+				joint.mPos = glm::mix( joint.getPosFiltered(), otherJoint->getPosFiltered(), 0.5f);
 
 				//joint.mOrientation = glm::mix( joint.mOrientation, otherJoint->mOrientation, 0.5f );
-				joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, 0.5f );
+				joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, t );
 			}
 			else if( (int)otherJoint->mConfidence > (int)joint.mConfidence ) {
-				joint.mPos = otherJoint->mPos;
-				joint.mOrientation = otherJoint->mOrientation;
+				joint.mPos = otherJoint->getPosFiltered();
+				joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, t );
 			}
 		}
 	}
@@ -268,7 +279,8 @@ const std::vector<std::string>&	allJointNames()
 
 void Joint::updateSmoothedPos( double currentTime )
 {
-	mPosFiltered.set( mPos, currentTime );
+	//mPosFiltered.set( mPos, currentTime );
+	mPosFiltered.set( mPos );
 }
 
 namespace {

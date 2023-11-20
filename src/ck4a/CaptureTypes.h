@@ -157,6 +157,9 @@ class Body {
 
 	const std::string&  getId() const					{ return mId; }
 	bool  isActive() const				{ return mActive; }
+
+	void transform( const glm::mat4& matrix );
+
 	float getDistanceToCamera() const	{ return mDistanceToCamera; }
 	//! Time the Body was first detected. 
 	double getTimeFirstTracked() const	{ return mTimeFirstTracked; }
@@ -184,7 +187,7 @@ class Body {
 	//! Updates the joint smoothing and other stuff
 	void		update( double currentTime, const SmoothParams &params = SmoothParams() );
 	void		initJointFilters( float freq = 25, float minCutoff = 1, float beta = 0.007f, float dCuttoff = 1 );
-	void		merge( const Body &other, double currentTime );
+	void		merge( const Body &other );
 
 	// https://cristal.univ-lille.fr/~casiez/1euro/
 	// Defaults taken from InteractiveDemo (source: https://cristal.univ-lille.fr/~casiez/1euro/InteractiveDemo/filters.js)
