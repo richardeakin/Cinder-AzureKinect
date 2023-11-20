@@ -355,18 +355,40 @@ void CaptureManager::update( double currentTime )
 		device->update();
 	}
 
-	if ( mMergeMultiDevice ) {
-		mergeBodies( currentTime );
-	} else {
-
-	}
-
+	transformBodies();
 	filterBodies();
+	resolveBodies( currentTime );
 }
 
 // ----------------------------------------------------------------------------------------------------
 // Apply body filtering, or just copy device body
 // ----------------------------------------------------------------------------------------------------
+
+void CaptureManager::transformBodies()
+{
+	auto getDeviceTransform = [ & ] ( const ck4a::CaptureAzureKinectRef& device )
+	{
+		glm::mat4 t {};
+		t = glm::translate( t, device->getPos() );
+		t = t * glm::mat4 { device->getOrientation() };
+		return t;
+	};
+
+	mTransformedBodies.clear();
+	for ( int deviceIndex { 0 }; deviceIndex < getNumDevices(); deviceIndex++ ) {
+		const auto& device { mCaptureDevices[ deviceIndex ] };
+		if ( !device->isEnabled() ) {
+			continue;
+		}
+
+		glm::mat4 t { getDeviceTransform( device ) };
+		vector<ck4a::Body> bodies { device->getBodies() };
+		for ( ck4a::Body body : bodies ) {
+			body.transform( t );
+			mTransformedBodies.push_back( body );
+		}
+	}
+}
 
 void CaptureManager::filterBodies()
 {
@@ -379,58 +401,36 @@ void CaptureManager::filterBodies()
 	};
 
 	if ( !mFilterEnabled ) {
-		mFilteredBodies.clear();
-		for ( int deviceIndex { 0 }; deviceIndex < getNumDevices(); deviceIndex++ ) {
-			const auto& device { mCaptureDevices[ deviceIndex ] };
-			if ( !device->isEnabled() ) {
-				continue;
-			}
-
-			glm::mat4 t { getDeviceTransform( device ) };
-			vector<ck4a::Body> bodies { device->getBodies() };
-			for ( ck4a::Body body : bodies ) {
-				body.transform( t );
-				mFilteredBodies.push_back( body );
-			}
-		}
+		mFilteredBodies = mTransformedBodies;
 		return;
 	}
 
-	vector<ck4a::Body> filteredBodies {};
-	for ( int deviceIndex { 0 }; deviceIndex < getNumDevices(); deviceIndex++ ) {
-		const auto& device { mCaptureDevices[ deviceIndex ] };
-		if ( !device->isEnabled() ) {
-			continue;
-		}
-
-		vector<ck4a::Body> bodies { device->getBodies() };
-		if ( mBodyJointFiltersNeedInit ) {
-			for ( auto& body : bodies ) {
+	vector<ck4a::Body> bodies { mTransformedBodies };
+	
+	if ( mBodyJointFiltersNeedInit ) {
+		for ( auto& body : bodies ) {
 #if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
-				body.initJointFilters( EUROFILTER_FREQUENCY, EUROFILTER_MINCUTOFF, EUROFILTER_BETA, EUROFILTER_DCUTOFF );
+			body.initJointFilters( EUROFILTER_FREQUENCY, EUROFILTER_MINCUTOFF, EUROFILTER_BETA, EUROFILTER_DCUTOFF );
 #elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
-				body.initJointFilters( DEADBAND_WIDTH, DEADBAND_INTERPOLATION_SPEED );
+			body.initJointFilters( DEADBAND_WIDTH, DEADBAND_INTERPOLATION_SPEED );
 #endif
-			}
-		}
-
-		glm::mat4 t { getDeviceTransform( device ) };
-		for ( ck4a::Body body : bodies ) {
-			body.transform( t );
-		}
-		for ( ck4a::Body& a : bodies ) {
-			for ( ck4a::Body& b : mFilteredBodies ) {
-				if ( a.getId() == b.getId() ) {
-					b.mergeReplacement( a, ORIENTATION_SMOOTHING );
-					a = b;
-					a.update( 0, ck4a::Body::SmoothParams { }.smoothJoints( true ) );
-					break;
-				}
-			}
-			filteredBodies.push_back( a );
 		}
 	}
-	mFilteredBodies = filteredBodies;
+
+	// Create list of filtered bodies by either adding a new body, or 
+	// filtering between a matching bod from the tracked list
+	mFilteredBodies.clear();
+	for ( ck4a::Body& a : bodies ) {
+		for ( ck4a::Body& b : mResolvedBodies ) {
+			if ( a.getId() == b.getId() ) {
+				b.mergeReplacement( a, ORIENTATION_SMOOTHING );
+				a = b;
+				a.update( 0, ck4a::Body::SmoothParams { }.smoothJoints( true ) );
+				break;
+			}
+		}
+		mFilteredBodies.push_back( a );
+	}
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -442,9 +442,13 @@ string makeMergedBodyKey( const std::string &deviceId, const std::string bodyId 
 	return deviceId + "-" + bodyId;
 }
 
-void CaptureManager::mergeBodies( double currentTime )
+void CaptureManager::resolveBodies( double currentTime )
 {
-	// TODO because bodies have been transformed
+	/* TODO
+		Resolve duplicates based on ID
+		Resolve duplicates based on position
+		Remove timed out bodies
+	*/
 
 	CI_PROFILE_CPU( "CaptureManager::mergeBodies" );
 

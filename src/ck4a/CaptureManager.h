@@ -105,7 +105,7 @@ public:
 	//! Returns transformed, deduped bodies with joint filtering applied
 	const std::vector<Body>& getFilteredBodies() const { return mFilteredBodies; }
 	//! Returns the transformed, deduped bodies
-	const std::vector<Body>& getMergedBodies() const	{ return mMergedBodies; }
+	const std::vector<Body>& getMergedBodies() const	{ return mResolvedBodies; }
 	//! Returns all bodies transformed by their device
 	const std::vector<Body>& getTransformedBodies() const { return mTransformedBodies; }
 
@@ -125,8 +125,10 @@ private:
 	void sendTestValue();
 	void sendMessage( const ci::osc::Message &msg );
 	void receiveBody( const ci::osc::Message &msg );
+	
 	void filterBodies();
-	void mergeBodies( double currentTime );
+	void resolveBodies( double currentTime );
+	void transformBodies();
 
 	struct Host {
 		std::string mId;
@@ -159,7 +161,7 @@ private:
 	DepthMode	mDefaultDepthMode = DepthMode::WFovBinned;
 
 	std::vector<Body>	mFilteredBodies;
-	std::vector<Body>	mMergedBodies;
+	std::vector<Body>	mResolvedBodies;
 	std::vector<Body>	mTransformedBodies;
 	std::set<JointType>	mMergeResolveJoints;
 
