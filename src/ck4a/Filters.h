@@ -99,14 +99,14 @@ private:
 template <typename T = double>
 class FilterDeadband {
 public:
-	FilterDeadband( T _deadbandWidth = (T)0.1f, T _interpolationSpeed = (T)0.5f )
+	FilterDeadband( T _deadbandWidth = (T)1.0f, T _interpolationSpeed = (T)0.65f )
 		: deadbandWidth { _deadbandWidth },
 		interpolationSpeed { _interpolationSpeed },
 		mPrev { (T)0 } {
 	}
 
 	T operator() ( T x ) {
-		if ( glm::distance2( x, mPrev ) >= deadbandWidth * deadbandWidth ) {
+		if ( glm::distance( x, mPrev ) >= deadbandWidth ) {
 			mPrev = glm::mix( mPrev, x, interpolationSpeed );
 		}
 		return mPrev;

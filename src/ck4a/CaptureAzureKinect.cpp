@@ -1098,7 +1098,11 @@ bool CaptureAzureKinect::fillBodyFromSkeleton( Body *body, double currentTime, c
 		if( (int)joint.mConfidence >= (int)JointConfidence::Medium ) {
 			hasGoodJoint = true;
 			if( currentTime >= 0 ) {
+#if CK4A_JOINT_FILTERING_ENABLED
+				joint.mMotionTrackerPos.storePos( joint.getPosFiltered(), currentTime );
+#else
 				joint.mMotionTrackerPos.storePos( joint.getPos(), currentTime );
+#endif
 				joint.mVelocity = joint.mMotionTrackerPos.calcVelocity();
 			}
 		}

@@ -52,6 +52,8 @@ float EUROFILTER_DCUTOFF = 1;		//! Cutoff frequency for derivative
 float DEADBAND_WIDTH = 2.0f;				//! Movement sensitivity threshold in cm
 float DEADBAND_INTERPOLATION_SPEED = 0.5f;	//! Interp speed
 
+float ORIENTATION_SMOOTHING = 0.79f;
+
 bool sLogNetworkVerbose = false;
 
 static bool sLockCenterZ = true;
@@ -419,7 +421,7 @@ void CaptureManager::filterBodies()
 		for ( ck4a::Body& a : bodies ) {
 			for ( ck4a::Body& b : mFilteredBodies ) {
 				if ( a.getId() == b.getId() ) {
-					b.merge( a );
+					b.mergeReplacement( a, ORIENTATION_SMOOTHING );
 					a = b;
 					a.update( 0, ck4a::Body::SmoothParams { }.smoothJoints( true ) );
 					break;
@@ -560,7 +562,7 @@ void CaptureManager::mergeBodies( double currentTime )
 						if( dist < mJointDistanceConsideredSame ) {
 							bodyMatched = true;
 							// merge the two bodies
-							bodyM.merge( bodyA );
+							bodyM.mergeDuplicate( bodyA, false, ORIENTATION_SMOOTHING );
 #if DEBUG_BODY_UI
 							im::SameLine(); im::Text( "|merged|" );
 #endif
@@ -871,10 +873,14 @@ void CaptureManager::sendBodyTracked( const CaptureDevice *device, Body body )
 
 		JointBlob b;
 		b.type = (int)joint.mType;
-		b.pos = joint.getPos();
 		b.vel = joint.mVelocity;
 		b.confidence = (int)joint.mConfidence;
 		b.orientation = joint.mOrientation;
+#if CK4A_JOINT_FILTERING_ENABLED
+		b.pos = joint.getPosFiltered();
+#else
+		b.pos = joint.getPos();
+#endif
 		b.timeFirstTracked = joint.mTimeFirstTracked;
 
 		joints.push_back( b );
@@ -1054,6 +1060,7 @@ void CaptureManager::updateUI()
 			mBodyJointFiltersNeedInit = true;
 		}
 #endif
+		im::DragFloat( "orientation smoothing", &ORIENTATION_SMOOTHING, 1.0f, 0.0f, 1.0f, "%.6f" );
 	}
 
 

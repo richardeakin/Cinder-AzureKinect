@@ -141,7 +141,13 @@ struct Joint {
 	//! Moves the joint position by the specified offset
 	void offsetPos( const vec3 &p )	{ mPos += p; }
 	//! Uses a 1euro filter to smooth joints
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
 	void updateSmoothedPos( double currentTime );
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+	void updateSmoothedPos();
+#else
+	void updateSmoothedPos( double lowPassAlpha );
+#endif
 private:
 
 	vec3			mPos;			//! cm TODO: make unit-agnostic at CaptureManager level
@@ -187,7 +193,8 @@ class Body {
 	//! Updates the joint smoothing and other stuff
 	void		update( double currentTime, const SmoothParams &params = SmoothParams() );
 	void		initJointFilters( float freq = 25, float minCutoff = 1, float beta = 0.007f, float dCuttoff = 1 );
-	void		merge( const Body &other );
+	void		mergeDuplicate( const Body& other, bool interpolateJoints = false, float orientationSmoothing = 0.0f );
+	void		mergeReplacement( const Body &other, float orientationSmoothing = 0.0f );
 
 	// https://cristal.univ-lille.fr/~casiez/1euro/
 	// Defaults taken from InteractiveDemo (source: https://cristal.univ-lille.fr/~casiez/1euro/InteractiveDemo/filters.js)

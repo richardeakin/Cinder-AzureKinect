@@ -49,27 +49,48 @@ void Body::transform( const glm::mat4& matrix )
 	}
 }
 
-void Body::merge( const Body &other )
+void Body::mergeDuplicate( const Body &other, bool interpolateJoints, float orientationSmoothing )
 {
-	for( auto &kv : mJoints ) {
-		auto &joint = kv.second;
-		const Joint *otherJoint = other.getJoint( joint.mType );
-		if( otherJoint ) {
+	if ( interpolateJoints ) {
 
-			static const float t { 0.021f };
+		const float t = orientationSmoothing <= 0.0f ? 1.0f : 1.0f - ci::math<float>::min( orientationSmoothing, 1.0f ) * 0.1f;
 
-			// if two joints are the same confidence, mix them
-			// otherwise use the one with higher confidence
-			if( otherJoint->mConfidence == joint.mConfidence ) {
-				joint.mPos = glm::mix( joint.getPosFiltered(), otherJoint->getPosFiltered(), 0.5f);
+		// Set values on a confidence-per-joint basis
+		for ( auto& kv : mJoints ) {
+			auto& joint = kv.second;
+			const Joint* otherJoint = other.getJoint( joint.mType );
+			if ( otherJoint ) {
 
-				//joint.mOrientation = glm::mix( joint.mOrientation, otherJoint->mOrientation, 0.5f );
-				joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, t );
+				// if two joints are the same confidence, mix them
+				// otherwise use the one with higher confidence
+				if ( otherJoint->mConfidence == joint.mConfidence ) {
+					joint.mPos = glm::mix( joint.getPos(), otherJoint->getPos(), 0.5f );
+					joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, 0.5f );
+				} else if ( (int)otherJoint->mConfidence > (int)joint.mConfidence ) {
+					joint.mPos = otherJoint->getPos();
+					joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, t );
+				}
 			}
-			else if( (int)otherJoint->mConfidence > (int)joint.mConfidence ) {
-				joint.mPos = otherJoint->getPosFiltered();
-				joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, t );
-			}
+		}
+
+	} else {
+
+		// Use overall confidence to select a skeleton and use its body wholesale
+		int32_t ca = 0;
+		int32_t cb = 0;
+
+	}
+}
+
+void Body::mergeReplacement( const Body& other, float orientationSmoothing )
+{
+	const float t = orientationSmoothing <= 0.0f ? 1.0f : ( 1.0f - ci::math<float>::min( orientationSmoothing, 1.0f ) ) * 0.1f;
+	for ( auto& kv : mJoints ) {
+		auto& joint = kv.second;
+		const Joint* otherJoint = other.getJoint( joint.mType );
+		if ( otherJoint ) {
+			joint.mPos = glm::mix( joint.getPos(), otherJoint->getPos(), 0.5f );
+			joint.mOrientation = glm::slerp( joint.mOrientation, otherJoint->mOrientation, t );
 		}
 	}
 }
@@ -111,6 +132,8 @@ void Body::update( double currentTime, const SmoothParams &params )
 			auto &joint = kv.second;
 #if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
 			joint.updateSmoothedPos( currentTime );
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+			joint.updateSmoothedPos();
 #else
 			joint.updateSmoothedPos( params.mLowPassAlpha );
 #endif
@@ -277,11 +300,28 @@ const std::vector<std::string>&	allJointNames()
 	return sJointNames;
 }
 
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+
 void Joint::updateSmoothedPos( double currentTime )
 {
-	//mPosFiltered.set( mPos, currentTime );
+	mPosFiltered.set( mPos, currentTime );
+}
+
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+
+void Joint::updateSmoothedPos()
+{
 	mPosFiltered.set( mPos );
 }
+
+#else
+
+void Joint::updateSmoothedPos( double lowPassAlpha )
+{
+	mPosFiltered.set( mPos, lowPassAlpha );
+}
+
+#endif
 
 namespace {
 
