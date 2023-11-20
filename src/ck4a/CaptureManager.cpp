@@ -82,6 +82,7 @@ void CaptureManager::init( const ma::Info& info )
 	mMaxSecondsUntilBodyRemoved = info.get( "maxSecondsUntilBodyRemoved", mMaxSecondsUntilBodyRemoved );
 	mMaxBodyDistance = info.get( "maxBodyDistance", mMaxBodyDistance );
 	mMergeMultiDevice = info.get( "mergeMultiDevice", mMergeMultiDevice );
+	mMergeBodySmoothingEnabled = info.get( "bodySmoothing", mMergeBodySmoothingEnabled );
 	mJointDistanceConsideredSame = info.get( "jointMatchMaxDistance", mJointDistanceConsideredSame );
 	sLockCenterZ = info.get( "lockBodyCenterZ", sLockCenterZ );
 
