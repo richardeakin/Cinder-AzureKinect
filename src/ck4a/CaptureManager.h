@@ -102,10 +102,12 @@ public:
 	bool isFilterEnabled() const { return mFilterEnabled; }
 	//! Returns where the bodies from multiple devices will be merged each update.
 	bool isMergeMultiDeviceEnabled() const { return mMergeMultiDevice; }
-	//! Returns the filtered bodies, may contain duplicates
+	//! Returns transformed, deduped bodies with joint filtering applied
 	const std::vector<Body>& getFilteredBodies() const { return mFilteredBodies; }
-	//! Returns the merged bodies
+	//! Returns the transformed, deduped bodies
 	const std::vector<Body>& getMergedBodies() const	{ return mMergedBodies; }
+	//! Returns all bodies transformed by their device
+	const std::vector<Body>& getTransformedBodies() const { return mTransformedBodies; }
 
 	Body::SmoothParams getJointSmoothingParams() const;
 
@@ -156,9 +158,10 @@ private:
 
 	DepthMode	mDefaultDepthMode = DepthMode::WFovBinned;
 
-	std::vector<Body>			mFilteredBodies;
-	std::vector<Body>			mMergedBodies;
-	std::set<JointType>			mMergeResolveJoints;
+	std::vector<Body>	mFilteredBodies;
+	std::vector<Body>	mMergedBodies;
+	std::vector<Body>	mTransformedBodies;
+	std::set<JointType>	mMergeResolveJoints;
 
 	std::vector<CaptureAzureKinectRef>		mCaptureDevices;
 	std::vector<ma::Info>					mDeviceInfos;

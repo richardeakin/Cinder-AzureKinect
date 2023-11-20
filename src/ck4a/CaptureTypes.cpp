@@ -95,14 +95,38 @@ void Body::mergeReplacement( const Body& other, float orientationSmoothing )
 	}
 }
 
-void Body::initJointFilters( float freq, float minCutoff, float beta, float dCuttoff )
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+
+void Body::initJointFilters( float freq, float minCutoff, float beta, float dCuttoff3 )
 {
 	CI_LOG_I( "id: " << mId );
-
 	for( auto &kv : mJoints ) {
 		kv.second.mPosFiltered = FilteredVec3( kv.second.mPosFiltered.get(), freq, minCutoff, beta, dCuttoff );
 	}
 }
+
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+void Body::initJointFilters( float width, float speed )
+{
+	CI_LOG_I( "id: " << mId );
+
+	for ( auto& kv : mJoints ) {
+		kv.second.mPosFiltered = FilteredVec3( kv.second.mPosFiltered.get(), width, speed );
+	}
+}
+
+#else
+
+void Body::initJointFilters()
+{
+	CI_LOG_I( "id: " << mId );
+
+	for ( auto& kv : mJoints ) {
+		kv.second.mPosFiltered = FilteredVec3( kv.second.mPosFiltered.get() );
+	}
+}
+
+#endif
 
 void Body::update( double currentTime, const SmoothParams &params )
 {

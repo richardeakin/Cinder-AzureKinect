@@ -106,7 +106,9 @@ public:
 	}
 
 	T operator() ( T x ) {
-		if ( glm::distance( x, mPrev ) >= deadbandWidth ) {
+		if ( mPrev == 0.0f ) {
+			mPrev = x;
+		} else if ( glm::distance( x, mPrev ) >= deadbandWidth ) {
 			mPrev = glm::mix( mPrev, x, interpolationSpeed );
 		}
 		return mPrev;
@@ -125,12 +127,6 @@ struct FilteredValue {
 	FilteredValue( float initialValue = T( 0 ) )
 		: mValue( initialValue )
 	{}
-	FilteredValue( float initialValue, double freq, T minCuttoff, T beta, T dcuttoff )
-		: mValue( initialValue )
-#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
-		, mFilter( freq, minCuttoff, beta, dcuttoff )
-#endif
-	{}
 
 #if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_LOWPASS )
 	FilterLowpass<float>			mFilter;
@@ -141,6 +137,10 @@ struct FilteredValue {
 	}
 
 #elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
+	FilteredValue( float initialValue, double freq, T minCuttoff, T beta, T dcuttoff )
+		: mValue( initialValue )
+		, mFilter( freq, minCuttoff, beta, dcuttoff )
+	{}
 
 	FilterOneEuro<float, double>	mFilter;
 
@@ -150,7 +150,11 @@ struct FilteredValue {
 	}
 
 #elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
-	
+	FilteredValue( float initialValue, double width, T speed )
+		: mValue( initialValue )
+		, mFilter( width, speed )
+	{}
+
 	FilterDeadband<float>	mFilter;
 
 	void set( const T value )
@@ -180,11 +184,21 @@ struct FilteredVec3 {
 		: mX( initialValue.x ), mY( initialValue.y ), mZ( initialValue.z )
 	{}
 
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
 	FilteredVec3( const vec3 &initialValue, float freq, float minCuttoff, float beta, float dcuttoff )
 		: mX( initialValue.x, double(freq), minCuttoff, beta, dcuttoff ),
 		  mY( initialValue.y, double(freq), minCuttoff, beta, dcuttoff ),
 		  mZ( initialValue.z, double(freq), minCuttoff, beta, dcuttoff )		
 	{}
+#endif
+
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+	FilteredVec3( const vec3& initialValue, float width, float speed )
+		: mX( initialValue.x, double( width ), speed ),
+		mY( initialValue.y, double( width ), speed ),
+		mZ( initialValue.z, double( width ), speed )
+	{}
+#endif
 
 	void set( const vec3 &v )
 	{

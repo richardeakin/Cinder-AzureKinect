@@ -49,10 +49,10 @@ float EUROFILTER_MINCUTOFF = 1;		//! Minimum cutoff frequency
 float EUROFILTER_BETA = 0.007f;		//! Cutoff slope.
 float EUROFILTER_DCUTOFF = 1;		//! Cutoff frequency for derivative
 
-float DEADBAND_WIDTH = 2.0f;				//! Movement sensitivity threshold in cm
-float DEADBAND_INTERPOLATION_SPEED = 0.5f;	//! Interp speed
+float DEADBAND_WIDTH = 1.0f;					//! Movement sensitivity threshold in cm
+float DEADBAND_INTERPOLATION_SPEED = 0.3333f;	//! Interp speed
 
-float ORIENTATION_SMOOTHING = 0.79f;
+float ORIENTATION_SMOOTHING = 0.21f;
 
 bool sLogNetworkVerbose = false;
 
@@ -355,13 +355,13 @@ void CaptureManager::update( double currentTime )
 		device->update();
 	}
 
-	filterBodies();
-
 	if ( mMergeMultiDevice ) {
 		mergeBodies( currentTime );
 	} else {
 
 	}
+
+	filterBodies();
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -1053,10 +1053,10 @@ void CaptureManager::updateUI()
 			mBodyJointFiltersNeedInit = true;
 		}
 #elif ( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
-		if ( im::DragFloat( "deadband width", &DEADBAND_WIDTH, 1.0f, 0.0f, 1000.0f, "%.6f" ) ) {
+		if ( im::DragFloat( "deadband width", &DEADBAND_WIDTH, 0.01f, 0.0f, 1000.0f, "%.3f" ) ) {
 			mBodyJointFiltersNeedInit = true;
 		}
-		if ( im::DragFloat( "deadband interp", &DEADBAND_INTERPOLATION_SPEED, 1.0f, 0.0f, 1.0f, "%.6f" ) ) {
+		if ( im::DragFloat( "deadband interp", &DEADBAND_INTERPOLATION_SPEED, 0.00001f, 0.0f, 1.0f, "%.6f" ) ) {
 			mBodyJointFiltersNeedInit = true;
 		}
 #endif

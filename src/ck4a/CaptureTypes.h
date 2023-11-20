@@ -192,7 +192,13 @@ class Body {
 
 	//! Updates the joint smoothing and other stuff
 	void		update( double currentTime, const SmoothParams &params = SmoothParams() );
+#if( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_ONE_EURO )
 	void		initJointFilters( float freq = 25, float minCutoff = 1, float beta = 0.007f, float dCuttoff = 1 );
+#elif( CK4A_FILTER_TYPE == CK4A_FILTER_TYPE_DEADBAND )
+	void		initJointFilters( float width = 1.0f, float speed = 0.5f );
+#else
+	void		initJointFilters();
+#endif
 	void		mergeDuplicate( const Body& other, bool interpolateJoints = false, float orientationSmoothing = 0.0f );
 	void		mergeReplacement( const Body &other, float orientationSmoothing = 0.0f );
 
